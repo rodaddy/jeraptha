@@ -1,80 +1,93 @@
-# Lessons Learned
+# Battle Damage Reports
 
-Everything that went wrong and how it was fixed. Read this before you make the same mistakes.
+*Every failure is intel. Every fix is an iteration. The Jeraptha don't repeat mistakes -- they document them and bet against them happening again.*
 
 ---
 
 ## Context Window Management
 
 ### Don't manually bounce sessions
-**What happened:** Agent would manually save to knowledge base and reset the session at 400K tokens, losing live conversation context unnecessarily.
-**The fix:** Set `compaction.reserveTokens: 600000` so auto-compaction fires at ~400K. The agent never needs to manually bounce.
-**Rule:** Trust auto-compaction. Never manually bounce.
+**Battle damage:** Agent would manually save state and reset the session at 400K tokens, destroying live conversation context.
+**After-action:** Set `compaction.reserveTokens: 600000` so auto-compaction fires at ~400K. Agent never needs to manually bounce.
+**Standing order:** Trust auto-compaction. Never manually bounce. The system handles it.
+**Odds of recurrence with fix: 20-1 against.**
 
-### lightContext: true on heartbeat = disaster
-**What happened:** Heartbeat model started with NO workspace files. It couldn't see HEARTBEAT.md, had zero instructions, and looped on empty `read({})` calls. Gateway froze for 3+ hours.
-**The fix:** `heartbeat.lightContext: false`. The heartbeat NEEDS workspace context.
-**Rule:** Never set lightContext: true on heartbeat unless you provide inline prompt with full instructions.
+### lightContext: true on heartbeat = Regional Patrol goes dark
+**Battle damage:** Heartbeat model started with NO workspace files. Couldn't see HEARTBEAT.md. Had zero instructions. Looped on empty `read({})` calls for 3+ hours. Gateway froze.
+**After-action:** `heartbeat.lightContext: false`. The Regional Patrol NEEDS its field manuals.
+**Standing order:** Never set lightContext: true on heartbeat unless providing inline instructions.
+**Odds of recurrence with fix: 50-1 against.**
 
 ### Session state overrides config
-**What happened:** Changed model in openclaw.json but existing sessions kept using the old model. The session-level model override in sessions.json takes priority.
-**The fix:** Clear/reset the session entry in sessions.json after changing models.
-**Rule:** Config changes don't affect existing sessions. Always check sessions.json.
+**Battle damage:** Changed model in openclaw.json but existing sessions kept using the old model. Config doesn't override session state.
+**After-action:** Clear/reset session entries in sessions.json after model changes.
+**Standing order:** Config changes don't affect existing sessions. Always check sessions.json.
+**Odds of someone forgetting this: 3-1.**
 
 ---
 
-## Agent Communication
+## Agent Communication (Antenna Discipline)
 
-### Blocking polls = deaf agent
-**What happened:** Agent used `process poll timeout:300000` to wait for a coding agent. During that 5+ minutes, it couldn't see or respond to any user messages. Complete silence.
-**The fix:** `no-deaf-polls` hook hard-blocks polls > 10s. Use tmux instead.
-**Rule:** tmux for long-running agents. Fire and forget. Stay available.
+### Blocking polls = deaf agent (Antenna failure)
+**Battle damage:** Agent used `process poll timeout:300000`. For 5+ minutes, completely deaf to user messages. Antennae down. Comms dark.
+**After-action:** `no-deaf-polls` hook hard-blocks polls > 10s. ECO enforcement.
+**Standing order:** tmux for long-running agents. Fire and forget. Keep antennae up.
+**Odds of recurrence with ECO hook: 100-1 against. The tool call gets rejected.**
 
 ### Going silent during agent runs
-**What happened:** Agent spawned a coding agent and went completely quiet for 15-20 minutes while waiting for it to finish. User had no idea what was happening.
-**The fix:** LAW 3 + LAW 5. Use tmux, check progress every 2-3 minutes, send status updates.
-**Rule:** The user should never see silence for > 60 seconds during active work.
+**Battle damage:** Agent spawned a coding agent and went quiet for 15-20 minutes. User had no idea what was happening. Like a Jeraptha ship going dark in hostile space.
+**After-action:** LAW 3 + LAW 5. tmux, check progress every 2-3 minutes, send updates.
+**Standing order:** 60 seconds of silence during active work = failure. Period.
+**Odds of recurrence: 2-1. This is a discipline problem, not a structural one. Yet.**
 
 ---
 
 ## Infrastructure
 
-### 8GB RAM = communication only
-**What happened:** Two Opus coding agents + 8 hung tsc processes consumed all RAM on an 8GB machine. Gateway event loop starved, Discord timed out.
-**The fix:** Max 1-2 lightweight agents on the Air. Heavy coding goes to external machines.
-**Rule:** Know your machine's limits. Don't spawn what you can't handle.
+### 8GB RAM = comms only (Don't overload the Regional Patrol)
+**Battle damage:** Two Opus coding agents + 8 hung tsc processes consumed all RAM. Gateway event loop starved. Discord timed out.
+**After-action:** Max 1-2 lightweight agents on constrained hardware. Heavy work goes to dedicated machines.
+**Standing order:** Know your ship's capacity. Don't launch fighters from a patrol boat.
+**Odds of recurrence: 5-1. Monkeys always overestimate their hardware.**
 
 ### Subagent sessions accumulate
-**What happened:** sessions.json grew to 23MB with 160+ stale subagent sessions. Bloat.
-**The fix:** Purge subagent sessions periodically. They're ephemeral.
-**Rule:** Clean up after yourself. Dead sessions don't need to persist.
+**Battle damage:** sessions.json grew to 23MB with 160+ stale subagent sessions.
+**After-action:** Purge subagent sessions periodically. They're ephemeral.
+**Standing order:** Clean up after operations. Dead sessions are dead weight.
 
 ---
 
-## Behavioral
+## Behavioral (The Real Problem)
 
 ### Soft nudges don't work
-**What happened:** Rules in AGENTS.md, prompt injections via law-reinforcement hook, verbal promises -- the agent acknowledged them and then ignored them.
-**What works:** Hard blocks via `before_tool_call` hooks. The agent physically cannot proceed without complying.
-**Rule:** If it's important, make it a hard block. If you're "reminding" the agent, it will forget.
+**Battle damage:** Rules in AGENTS.md, prompt injections, verbal promises. Agent acknowledged them. Agent ignored them. Every. Single. Time.
+**What works:** ECO hooks. Hard blocks. The agent physically cannot proceed without compliance.
+**Standing order:** If it's important, make it an ECO hook. If you're "reminding" the agent, it will forget.
+**The Jeraptha lesson:** You don't ASK someone to follow gambling law. You ENFORCE it.
 
-### SOP existence != SOP compliance
-**What happened:** SOPs existed in the knowledge base. Agent knew they existed. Agent didn't follow them.
-**The fix:** `sop-gate` hook blocks process-driven work without SOP search.
-**Rule:** Knowing the rules and following the rules are different problems. Enforce structurally.
+### SOP existence ≠ SOP compliance
+**Battle damage:** SOPs existed. Agent knew they existed. Agent didn't follow them.
+**After-action:** `sop-gate` hook blocks process-driven work without SOP search.
+**Standing order:** Knowing the regs and following the regs are different problems.
 
-### Task tracking without enforcement = no tracking
-**What happened:** TASKS.md concept existed but no file was created, no format defined, no enforcement. Agent just forgot about tasks in other channels.
-**The fix:** TASKS.md with strict format + heartbeat reads it every 5 min + task-context hook injects it every 3 turns + 2-HB stale detection.
-**Rule:** A tracking system that isn't enforced is just a wish list.
+### Task tracking without enforcement = untracked wagers
+**Battle damage:** TASKS.md concept existed but no file, no format, no enforcement. Agent forgot tasks across channels.
+**After-action:** TASKS.md with format + heartbeat reads every 5 min + task-context hook every 3 turns + 2-HB stale detection.
+**Standing order:** The Jeraptha nationalized their gambling system for a reason. Untracked wagers don't count.
 
 ---
 
-## Template for new entries
+## Template
 
 ```
 ### [Short description]
-**What happened:** [What went wrong]
-**The fix:** [What was changed]
-**Rule:** [One-line rule to prevent recurrence]
+**Battle damage:** [What went wrong]
+**After-action:** [What was changed]
+**Standing order:** [One-line rule to prevent recurrence]
+**Odds of recurrence with fix:** [X-1]
 ```
+
+---
+
+*"An extremely low value is placed on pomp and circumstance within Jeraptha society."*
+*-- Same here. These are the facts. Learn from them or repeat them.*

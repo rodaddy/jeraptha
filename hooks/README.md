@@ -1,73 +1,84 @@
-# Hooks Catalog
+# 🪲 The ECO -- Ethics and Compliance Office
 
-OpenClaw hooks fire on specific events and can block tool calls or inject prompt content.
+*"Is a branch of the Jeraptha Military which focused on ensuring established gambling law is obeyed, to observe the spirit of the law, and is responsible for overseeing compliance to established practices."*
 
-## Event Types
+Sound familiar? That's exactly what these hooks do -- except instead of gambling law, we enforce operational law.
 
-| Event | When | Can Block? | Use For |
-|-------|------|-----------|---------|
-| `before_tool_call` | Before any tool is executed | ✅ Yes | Hard enforcement (SOP gate, deaf polls, etc.) |
-| `before_prompt_build` | Before prompt is assembled | ❌ No (inject only) | Context injection (tasks, scores, rule reminders) |
+## Hook Types
 
-## Installed Hooks
+| Event | When | Can Block? | Jeraptha Equivalent |
+|-------|------|-----------|-------------------|
+| `before_tool_call` | Before any tool executes | ✅ Hard block | ECO enforcement -- comply or don't proceed |
+| `before_prompt_build` | Before prompt assembly | ❌ Inject only | Intel briefing -- awareness, not enforcement |
 
-### Hard Blocks (before_tool_call)
+## ECO Enforcement Hooks (Hard Blocks)
 
-| Hook | What It Blocks | Why |
-|------|---------------|-----|
-| `no-deaf-polls` | `process poll` with timeout > 10s | Prevents agent from going deaf to user messages |
-| `sop-gate` | Process-driven work without SOP check | Forces SOP compliance for deploys, git, PRs, etc. |
-| `ob-gate` | Factual questions without knowledge base check | Forces knowledge base first |
-| `no-self-surgery` | Editing config/bootstrap files | Prevents agent from breaking itself |
+These are non-negotiable. The agent cannot proceed without compliance.
 
-### Prompt Injection (before_prompt_build)
+| Hook | Codename | What It Blocks |
+|------|----------|---------------|
+| `no-deaf-polls` | 🔇 Antenna Block | `process poll` with timeout > 10s. Keeps antennae up. |
+| `sop-gate` | 📖 Compliance Check | Process-driven work without SOP search. No unauthorized operations. |
+| `ob-gate` | 🧠 Intel First | Factual questions without checking knowledge base. Check intel before asking. |
+| `no-self-surgery` | 🔒 Carapace Lock | Editing config/bootstrap files. The carapace stays intact. |
 
-| Hook | What It Injects | Frequency |
-|------|----------------|-----------|
-| `task-context` | Active tasks from TASKS.md | Every 3 turns (STALLED: every turn) |
-| `sentiment-tracker` | Behavioral alerts on negative sentiment | On negative user sentiment |
-| `law-reinforcement` | Critical behavioral rules | Every 5 turns |
+## Intel Briefing Hooks (Prompt Injection)
+
+Awareness and context injection. Not enforcement -- but persistent enough that the agent can't "forget."
+
+| Hook | Codename | What It Injects | Frequency |
+|------|----------|----------------|-----------|
+| `task-context` | 📋 Flash Gold | Active tasks from TASKS.md | Every 3 turns (🚨 STALLED: every turn) |
+| `sentiment-tracker` | 📊 Wagering | Behavioral alerts on negative sentiment | On detection |
+| `law-reinforcement` | ⚖️ Standing Orders | Critical behavioral rules | Every 5 turns |
 
 ## Adding Custom Hooks
+
+The ECO is extensible. Create a new compliance office:
 
 ```
 hooks/
 └── my-hook/
-    ├── HOOK.md        # Metadata (name, description, events)
-    └── handler.ts     # Logic
+    ├── HOOK.md        # Orders (name, description, events)
+    └── handler.ts     # Enforcement logic
 ```
 
 ### HOOK.md format:
 ```yaml
 ---
 name: my-hook
-description: "What this hook does"
+description: "What this compliance rule enforces"
 metadata:
   openclaw:
-    emoji: "🔧"
-    events: ["before_tool_call"]  # or ["before_prompt_build"]
+    emoji: "🪲"
+    events: ["before_tool_call"]
 ---
 ```
 
-### handler.ts patterns:
-
-**Hard block:**
+### ECO enforcement pattern (hard block):
 ```typescript
 const handler = async (event: any) => {
-  if (shouldBlock(event)) {
-    return { block: true, blockReason: "Why it was blocked" };
+  if (violation(event)) {
+    return {
+      block: true,
+      blockReason: "ECO VIOLATION: [what rule was broken and how to comply]"
+    };
   }
   return undefined;
 };
 export default handler;
 ```
 
-**Prompt injection:**
+### Intel briefing pattern (injection):
 ```typescript
 const handler = async (event: any) => {
   return {
-    prompt: (event.context?.prompt || "") + "\n\nInjected content here",
+    prompt: (event.context?.prompt || "") + "\n\nINTEL BRIEFING: [context here]",
   };
 };
 export default handler;
 ```
+
+---
+
+*Captain Scorandum would be proud. Probably. He'd also bet 6-1 odds on whether you actually follow these hooks.*

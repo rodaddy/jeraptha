@@ -1,25 +1,31 @@
-# Decision 002: Verbal Reinforcement Over Numeric Scoring
+# Decision 002: Verbal Wagers Over Numeric Scores
+
+*"The Intelligence Community within the Jeraptha government makes use of a crowdsourced wagering system in order to convey the legitimacy of information."*
 
 **Date:** 2026-04-07
 **Status:** Accepted
-**Context:** Need behavioral scoring that actually changes agent behavior
+**Odds: 6-1, no points. Shockingly confident.**
 
 ## Problem
-Numeric scores (+1, -2) don't give the agent enough information to change behavior. The agent sees "score dropped by 2" but doesn't know WHY or what specifically to do differently.
+Numeric scores (+1, -2) don't give the agent enough information to change behavior. "Score: -2" tells it nothing about what to fix.
 
 ## Decision
-Use hybrid scoring: numeric scores for thresholds (trigger enforcement mode changes) + verbose verbal feedback for actual behavioral change.
+Hybrid scoring: numeric scores for thresholds (trigger enforcement mode changes) + verbose verbal feedback for behavioral change.
 
-Example:
-- ❌ "Score: -2 (criticism)"
-- ✅ "Score: -2 (criticism) -- Rico said 'shit show' because you dropped 3 tasks across channels today. Pattern: you start tasks in one channel, get asked something in another channel, and never come back. The fix: TASKS.md + heartbeat stale detection should catch this, but you also need to update TASKS.md BEFORE switching channels."
+### Bad (numeric only):
+> Score: -2 (criticism)
+
+### Good (verbal + numeric):
+> Score: -2 (criticism) -- User said "shit show" because agent dropped 3 tasks across channels. Pattern: starts tasks in one channel, gets distracted in another, never returns. The Jeraptha equivalent: placing a wager, walking away from the table, and never checking the outcome.
 
 ## Research Basis
-- Reflexion (2023): "verbal reward signals" work better than numeric for LLMs because the model can reason about the feedback
-- OPTAGENT (2025): evaluating quality of interactions, not just outcomes
-- MetaClaw (2026): failure trajectory analysis → synthesize new behavioral rules
+- **Reflexion** (2023): Verbal reward signals work better than numeric for LLMs because the model can reason about WHY it failed
+- **OPTAGENT** (2025): Evaluating quality of interactions matters, not just outcomes
+- **MetaClaw** (2026): Failure trajectory analysis → synthesize new behavioral rules
+- **The Jeraptha gambling system**: Odds aren't just numbers -- they convey confidence and context. "60-1 odds, no points" means something very different from "2-1, 500 points."
 
 ## Consequences
-- SCORECARD.md is more verbose (more context usage)
+- SCORECARD.md is more verbose (more context)
 - But feedback is actionable -- agent knows exactly what to fix
-- Sentiment detection from natural user reactions reduces user burden
+- Sentiment detection reduces user burden (natural reactions become structured intel)
+- Like crowdsourced wagering -- the signal conveys legitimacy, not just magnitude
