@@ -1,0 +1,52 @@
+# TASKS.md -- Cross-Channel Task Tracker
+
+**Purpose:** Single source of truth for what the agent is doing, should be doing, and has finished. The heartbeat reads this every 5 minutes and injects it into the active session. If a task isn't here, it doesn't exist. If a task IS here and nothing's happening, the heartbeat kicks the agent's ass.
+
+**Rules:**
+- Every task goes here IMMEDIATELY when received
+- Status updates happen in real-time as work progresses
+- "In Progress" means ACTIVELY working on it RIGHT NOW
+- Completed tasks stay for 24h with full detail, then archive
+- Every task has a channel so the heartbeat knows where to poke
+- Check knowledge base for SOPs before starting any process-driven task
+
+---
+
+## 🔴 Active Tasks
+
+_None -- fresh start._
+
+---
+
+## 🟡 Pending Tasks (waiting on input or blocked)
+
+_None._
+
+---
+
+## ✅ Completed (last 24h)
+
+_None._
+
+---
+
+## 🏗️ Infrastructure / Self-Improvement
+
+_None._
+
+---
+
+## 📋 Task Template
+
+```
+### [Task Name] ([issue ref if applicable])
+- **Channel:** #channel-name
+- **Status:** 🔴 Active / 🔧 In Progress / ⏳ Waiting / 🚫 Blocked / ✅ Done
+- **Added:** YYYY-MM-DD
+- **Last HB:** YYYY-MM-DD HH:MM (updated each heartbeat when progressing)
+- **Context:** Full background -- what is this, why are we doing it, what's the history. Not one line of lazy bullshit. Actually explain.
+- **What's done:** Specific deliverables, PRs, branches, files changed.
+- **What's blocking:** The specific thing preventing progress. Name names, link issues.
+- **SOP:** Reference to relevant SOP, or "N/A" if none, or "TODO: create" if one should exist.
+- **Next action:** The SPECIFIC next thing to do. Not "continue working on it."
+```

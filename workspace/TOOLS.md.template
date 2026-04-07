@@ -1,0 +1,28 @@
+# TOOLS.md -- Agent Environment
+
+## Infrastructure
+
+| Host | IP | Role |
+|------|-----|------|
+| [machine name] | [IP] | [role] |
+
+## Models
+
+| Alias | Model | Use For |
+|-------|-------|---------|
+| [default] | [model-id] | General tasks |
+| [heavy] | [model-id] | Deep coding, complex reasoning |
+| [light] | [model-id] | Quick lookups, monitoring |
+
+## Channels
+
+| Channel | Handle | Notes |
+|---------|--------|-------|
+| Discord | [bot name] | Primary |
+| Telegram | [bot handle] | Secondary |
+
+## Preferences
+
+- Package manager: [bun/npm/yarn]
+- Python: [uv/pip/conda]
+- Timezone: [IANA timezone]

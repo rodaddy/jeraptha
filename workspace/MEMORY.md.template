@@ -1,0 +1,28 @@
+# Memory -- Knowledge Base Backed
+
+Your knowledge base is primary. This file = quick-ref only.
+
+## Query Commands
+
+```bash
+# Search
+mcp2cli open-brain search_brain --params '{"query":"topic","limit":5}'
+
+# Load session
+mcp2cli open-brain session_load --params '{"project":"agent-main"}'
+
+# Save (ALWAYS tag with your agent name)
+mcp2cli open-brain session_save --params '{"project":"agent-main","summary":"...","next_steps":["..."],"tags":["agent-name","state"]}'
+```
+
+## Fixed Facts
+
+- Timezone: [your timezone]
+- Primary channel: [Discord/Telegram/etc]
+- Knowledge base at: [IP/hostname]
+
+## Tagging Rules
+
+Every knowledge base write = `agent-name` + one of: `config` `state` `decision` `lesson` `context` `idea` `person` `project` `todo`
+
+## Full protocol -> see AGENTS.md

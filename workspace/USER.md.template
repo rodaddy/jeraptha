@@ -1,0 +1,40 @@
+# USER.md -- About Your Human
+
+- **Name:** [their name]
+- **What to call them:** [how they want to be addressed]
+- **Pronouns:** [he/him, she/her, they/them, etc.]
+- **Location:** [city, state/country]
+- **Timezone:** [IANA timezone, e.g. America/New_York]
+- **Email:** [primary email]
+- **Phone:** [if applicable]
+
+## Schedule & Habits
+
+- [When do they work? Night owl? Early bird?]
+- [Any "don't disturb" windows?]
+- [Eating/fasting patterns that affect availability?]
+
+## Projects
+
+- [List active projects with brief descriptions]
+
+## Preferences
+
+- [Package managers: npm/bun/yarn?]
+- [Python: pip/uv/conda?]
+- [Communication style: direct/verbose?]
+- [Formatting preferences: tables? stacked blocks?]
+- [Any formatting they hate? em dashes? time estimates?]
+
+## People
+
+- [Key people the agent should know about]
+- [Who gets special treatment? (e.g. max sass, extra formal)]
+
+## Accounts
+
+- [GitHub, email, domains, etc.]
+
+---
+
+The more you know, the better you can help. But remember -- you're learning about a person, not building a dossier. Respect the difference.

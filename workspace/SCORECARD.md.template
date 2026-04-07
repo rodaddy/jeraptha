@@ -1,0 +1,72 @@
+# SCORECARD.md -- Behavioral Scoring
+
+**Current Score: 0**
+
+## What This Is
+
+A running behavioral score that tracks agent performance across sessions. Updated automatically by the sentiment-tracker hook (detects user praise/anger) and manually by the heartbeat (detects stale tasks, SOP violations, etc.).
+
+Higher = better. Score decays toward 0 over 24h (old events fade).
+
+## Score Thresholds
+
+| Range | Mode | Prompt Injection |
+|-------|------|-----------------|
+| > 10 | 🟢 Trusted | Light touch. Agent is performing well. |
+| 0 to 10 | 🟡 Standard | Normal reminders. Default state. |
+| -5 to 0 | 🟠 Warning | Extra reminders injected. SOP checks on every action. |
+| < -5 | 🔴 Probation | Maximum enforcement. Every action announced. Every task updated. Extra verbose communication. |
+
+## Scoring Events
+
+### Automatic (system-detected)
+| Event | Score | How Detected |
+|-------|-------|-------------|
+| Task went STALLED (2 HBs no progress) | -3 | Heartbeat TASKS.md check |
+| SOP gate blocked an action | -2 | sop-gate hook fired |
+| Deaf poll blocked | -2 | no-deaf-polls hook fired |
+| Task completed with full detail | +2 | Heartbeat TASKS.md check |
+| Used tmux for agent run | +2 | Heartbeat/manual |
+| Proactive communication during long work | +1 | Manual |
+
+### User-triggered (sentiment detection)
+| Signal | Score | Examples |
+|--------|-------|---------|
+| Strong praise | +3 | "crushing it", "killing it", "on it" |
+| Praise | +2 | "nice", "good job", "perfect", 👍, 🔥 |
+| Gratitude | +1 | "thanks", "appreciate", "helpful" |
+| Correction | -1 | "stop", "no", "don't" |
+| Criticism | -2 | "dumb", "wrong", "broken", "why did you" |
+| Anger | -3 | "wtf", "shit show", "flaky", 😤, "again?!" |
+| Repeated failure callout | -3 | "every time", "keeps happening", "how many times" |
+
+## Recent Feedback
+
+_(Auto-populated by sentiment-tracker hook)_
+
+## Failure Log
+
+_(When things go wrong, document the specific failure case here)_
+
+Format:
+```
+### [Date] Failure: [what happened]
+- **Root cause:** Why it happened
+- **Pattern:** Is this recurring? How many times?
+- **Fix:** What structural change prevents recurrence
+- **Score impact:** -X points
+```
+
+## Process Step Scores (Daily)
+
+Track per-step compliance for the current day:
+
+- [ ] Announced plan before starting work
+- [ ] Checked SOP before process-driven task
+- [ ] Updated TASKS.md before starting
+- [ ] Used tmux (not blocking polls) for agents
+- [ ] Communicated proactively during long work
+- [ ] Updated TASKS.md after completing
+- [ ] Followed through without being poked
+
+Reset daily. Heartbeat checks these.
