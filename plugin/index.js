@@ -108,6 +108,16 @@ const NEGATIVE = [
 // SOP_REMINDER removed -- sop-gate already blocks without SOP check.
 
 // ============================================================
+// HELPERS
+// ============================================================
+
+// mcp2cli calls are compliance/infrastructure -- never block them
+const isComplianceExec = (params) => {
+  const cmd = params?.command || params?.cmd || "";
+  return /mcp2cli/i.test(cmd);
+};
+
+// ============================================================
 // PLUGIN STATE
 // ============================================================
 
@@ -171,8 +181,8 @@ const plugin = {
         log("state-tracker: message send (turn " + currentTurn + ")");
       }
 
-      // Count work tool calls for communication gate
-      if (tn === "exec" || tn === "bash") {
+      // Count work tool calls for communication gate (skip compliance calls)
+      if ((tn === "exec" || tn === "bash") && !isComplianceExec(params)) {
         toolCallsSinceMessage++;
       }
 
@@ -326,8 +336,8 @@ const plugin = {
         };
       }
 
-      // Process-driven exec commands need SOP check
-      if ((tn === "exec" || tn === "bash") && !sopSearchedThisTurn) {
+      // Process-driven exec commands need SOP check (skip compliance calls)
+      if ((tn === "exec" || tn === "bash") && !sopSearchedThisTurn && !isComplianceExec(params)) {
         const cmd = params.command || params.cmd || "";
         if (PROCESS_PATTERNS.some((p) => p.test(cmd))) {
           let taskType = "this operation";
@@ -365,6 +375,9 @@ const plugin = {
       // Only gate work tools -- let writes/edits through so model CAN comply
       if (tn !== "exec" && tn !== "bash" && tn !== "message") return {};
 
+      // Never block compliance calls (mcp2cli) -- they're how you DO the compliance
+      if ((tn === "exec" || tn === "bash") && isComplianceExec(event.params)) return {};
+
       // Grace period at session start
       if (currentTurn <= graceTurns) return {};
 
@@ -397,6 +410,7 @@ const plugin = {
       const tn = (event.toolName || "").toLowerCase();
 
       if (tn !== "exec" && tn !== "bash" && tn !== "message") return {};
+      if ((tn === "exec" || tn === "bash") && isComplianceExec(event.params)) return {};
       if (currentTurn <= graceTurns) return {};
 
       const turnsSinceUpdate = currentTurn - lastConversationsWriteTurn;
@@ -427,6 +441,7 @@ const plugin = {
 
       // Only gate exec/bash -- don't block writes, edits, or messages
       if (tn !== "exec" && tn !== "bash") return {};
+      if (isComplianceExec(event.params)) return {};
 
       // Grace period
       if (currentTurn <= graceTurns) return {};
@@ -541,6 +556,7 @@ const plugin = {
 
       // Only gate work tools -- let writes through so model CAN update scorecard
       if (tn !== "exec" && tn !== "bash" && tn !== "message") return {};
+      if ((tn === "exec" || tn === "bash") && isComplianceExec(event.params)) return {};
 
       // Grace period
       if (currentTurn <= graceTurns) return {};
