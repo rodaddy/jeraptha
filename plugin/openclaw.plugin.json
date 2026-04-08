@@ -1,8 +1,8 @@
 {
-  "id": "pai-hooks",
-  "name": "PAI Enforcement Hooks",
-  "description": "Tool call guards, prompt injection, and behavioral enforcement for PAI/Skippy. Converts managed hooks to typed plugin hooks.",
-  "version": "1.0.0",
+  "id": "jeraptha",
+  "name": "Jeraptha Behavioral Enforcement",
+  "description": "ECO hooks, wagering system, and Flash Gold task tracking for OpenClaw agents. 7 hooks: no-self-surgery, no-deaf-polls, ob-gate, sop-gate, task-context, sentiment-tracker, law-reinforcement.",
+  "version": "2.0.0",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

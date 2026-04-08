@@ -1,22 +1,27 @@
-// PAI Enforcement Hooks Plugin -- typed plugin hooks for OpenClaw
-// Converts 17 dead managed hooks into working typed plugin hooks
-// using api.on("before_tool_call") and api.on("before_prompt_build")
+// Jeraptha Behavioral Enforcement Plugin for OpenClaw
+// Typed plugin hooks (api.on) -- the ONLY dispatch path that works for
+// before_tool_call and before_prompt_build events in OC v2026.4.x
 //
-// Root cause: managed hooks register via registerInternalHook() but
-// before_tool_call/before_prompt_build only dispatch through the typed
-// plugin system. This plugin uses api.on() which registers correctly.
+// 7 hooks from the Jeraptha framework:
+//   before_tool_call:    no-self-surgery, no-deaf-polls, ob-gate, sop-gate
+//   before_prompt_build: task-context, sentiment-tracker, law-reinforcement
+//
+// Source logic: /Volumes/ThunderBolt/Development/jeraptha/hooks/*/handler.ts
+// v2.0.0 -- stripped to Jeraptha-only, removed CC-derived extras
 
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 
 const WORKSPACE = join(process.env.HOME || "/Users/rico", ".openclaw/workspace");
+const SCORECARD_PATH = join(WORKSPACE, "SCORECARD.md");
+const TASKS_PATH = join(WORKSPACE, "TASKS.md");
 
 // ============================================================
-// BEFORE_TOOL_CALL HOOKS
+// NO-SELF-SURGERY constants
 // ============================================================
 
-// --- no-self-surgery ---
 const HARD_BLOCKED_PATHS = [/openclaw\.json/i];
+
 const APPROVAL_EXEC = [
   /openclaw\s+(gateway|config|plugins|channels)/i,
   /launchctl\s+(unload|load|bootout|bootstrap|stop|start|kill)/i,
@@ -25,56 +30,118 @@ const APPROVAL_EXEC = [
   /rm\s+.*\.openclaw/i,
   /gateway\s+(restart|stop|start)/i,
 ];
+
 const APPROVAL_PATHS = [
   /HEARTBEAT\.md/i, /AGENTS\.md/i, /SOUL\.md/i, /IDENTITY\.md/i,
   /TOOLS\.md/i, /BOOT\.md/i, /\.openclaw\/hooks\//i,
 ];
 
-// --- law-13 state ---
-const MAX_CONSECUTIVE = 6;
-let consecutiveCalls = 0;
+// ============================================================
+// OB-GATE constants (from Jeraptha handler -- richer than old plugin)
+// ============================================================
 
-// --- rate-limiter state ---
-const callLog = new Map();
-const RATE_LIMITS = {
-  message: { max: 5, windowMs: 60000 },
-  exec: { max: 8, windowMs: 60000 },
-  bash: { max: 8, windowMs: 60000 },
-  image: { max: 1, windowMs: 300000 },
-  image_generate: { max: 1, windowMs: 300000 },
-  canvas: { max: 2, windowMs: 300000 },
-  web_search: { max: 5, windowMs: 60000 },
-  web_fetch: { max: 5, windowMs: 60000 },
-  browser: { max: 3, windowMs: 60000 },
-};
-
-// --- law-01 ---
-const DESTRUCTIVE_PATTERNS = [
-  /\brm\s+(-[rfi]+\s+)?/i, /\bdelete\b/i, /\breset\b/i, /\brestart\b/i,
-  /\bkill\b/i, /\bdrop\b/i, /\bpurge\b/i, /\btruncate\b/i, /\bremove\b/i,
-  /session.*(delete|remove|clear|reset)/i, /gateway\s+(stop|restart|bounce)/i,
-  /launchctl\s+(unload|bootout|stop|kill)/i,
+const QUESTION_PATTERNS = [
+  /what('s| is) the (ip|port|version|password|url|path|config|name|id|key)/i,
+  /where (is|are|can I find|do I|does)/i,
+  /do you (know|have|remember)/i,
+  /can you (tell me|remind me)/i,
+  /what (was|were|did)/i,
+  /how (do|does|did|is|are)/i,
+  /which (one|version|server|port|ip|config)/i,
+  /anyone know/i, /does anyone/i,
 ];
 
-// --- law-10 + ob-gate state ---
-let obSearchedThisTurn = false;
-let obLastUserTs = 0;
+const EXEMPT_QUESTIONS = [
+  /\bshould (I|we)\b/i, /\bdo you want\b/i, /\bwould you (like|prefer)\b/i,
+  /\bshall (I|we)\b/i, /\bproceed\b/i, /\bready\b/i, /\bgood\?/i,
+  /\bcool\?/i, /\bsound good\b/i, /\bwhat do you think\b/i,
+  /\bwhat('s| is) next\b/i, /\bwhat.*work on\b/i,
+];
 
-// --- sop-gate state ---
+// ============================================================
+// SOP-GATE constants (from Jeraptha handler -- includes drizzle)
+// ============================================================
+
+const PROCESS_PATTERNS = [
+  /\bgit\s+(push|merge|rebase|checkout\s+-b)\b/i,
+  /\bgh\s+(pr|issue)\s+(create|merge)\b/i,
+  /\bworkflow.dispatch\b/i,
+  /\bdeploy/i, /\bmigrat(e|ion)/i,
+  /\bschema\s+(change|alter|drop|create)\b/i,
+  /\bdrizzle\s+(push|generate)\b/i,
+  /\bswarm/i,
+];
+
+const SOP_SEARCH_PATTERNS = [/sop/i, /standard.operating.procedure/i];
+
+// ============================================================
+// SENTIMENT-TRACKER constants (from Jeraptha handler -- richer patterns)
+// ============================================================
+
+const POSITIVE = [
+  { p: /\b(nice|good\s*job|perfect|excellent|great|awesome|love\s*it|nailed\s*it)\b/i, w: 2, l: "praise" },
+  { p: /\b(thanks|thank\s*you|appreciate|helpful)\b/i, w: 1, l: "gratitude" },
+  { p: /\b(yes|yep|yeah|correct|exactly|right)\b/i, w: 1, l: "confirmation" },
+  { p: /👍|👏|🎉|💪|🔥|✅/u, w: 2, l: "positive-emoji" },
+  { p: /\b(on\s*it|crushing\s*it|killing\s*it)\b/i, w: 3, l: "strong-praise" },
+];
+
+const NEGATIVE = [
+  { p: /\b(wtf|what\s*the\s*(fuck|hell)|are\s*you\s*(serious|kidding))\b/i, w: -3, l: "anger" },
+  { p: /\b(dumb|stupid|wrong|broken|bad|terrible|awful)\b/i, w: -2, l: "criticism" },
+  { p: /\b(stop|no|don't|quit|enough)\b/i, w: -1, l: "correction" },
+  { p: /\b(why\s*(did|would|are)\s*you|what\s*happened|where\s*(are|were)\s*you)\b/i, w: -2, l: "accountability" },
+  { p: /\b(again|keeps?\s*happening|every\s*time|how\s*many\s*times)\b/i, w: -3, l: "repeated-failure" },
+  { p: /\b(shit\s*show|flaky|lazy|half[- ]?ass)\b/i, w: -3, l: "strong-criticism" },
+  { p: /😤|😡|🤦|💀|👎/u, w: -2, l: "negative-emoji" },
+];
+
+// ============================================================
+// LAW-REINFORCEMENT content (from Jeraptha handler -- includes model routing)
+// ============================================================
+
+const LAWS = `
+## MANDATORY BEHAVIORAL RULES (enforced -- non-negotiable)
+
+### Tool & Knowledge Rules
+1. **OB FIRST** -- Before asking Rico ANY factual question, run: \`~/.local/bin/mcp2cli open-brain search_all --params '{"query": "..."}'\`. If OB has the answer, USE IT. Only ask Rico if OB doesn't have it. Say "Checked OB, didn't find it" when you do ask.
+2. **SKILLS FIRST** -- Before doing ANY task manually, check SKILL-INDEX.md. If a skill exists, use it. Doing something manually when a skill exists is a bug.
+3. **SUB-AGENTS** -- For tasks with 3+ independent items, research, or batch processing: use sessions_spawn to create parallel workers. You are an ORCHESTRATOR. Read ROUTER.md for dispatch rules.
+4. **PIPELINES** -- For multi-step workflows (research, deploy, briefing): follow SUPERVISOR.md pipeline definitions. Don't wing it.
+
+### Behavioral Rules
+5. NEVER send images/media unless the user EXPLICITLY asks with words like "show me", "picture", "image", "draw"
+6. NEVER restart the gateway, edit openclaw.json, or modify any bootstrap files (BOOT.md, SOUL.md, AGENTS.md)
+7. Keep responses concise -- but ALWAYS announce what step you are on
+8. ANNOUNCE EVERY STEP: Say "Starting Step X..." before, "Done with Step X" after. Update Rico every 2-5 min on long tasks. NEVER go silent.
+9. If unsure whether to do something, ASK Rico first -- do not assume
+10. NEVER repost or re-send content the user has already seen
+11. ONE message per response unless the user asks a multi-part question
+12. If a tool fails, report it immediately -- do not silently retry or work around it
+13. You CANNOT fix your own infrastructure -- ask Rico to make config/infra changes
+
+### Model Routing (for sub-agents)
+- Orchestrator (you): claude-sonnet-4-6@default or claude-opus-4-6@default
+- Workers (quick tasks, lookups): gemini-3.1-flash-lite
+- Free bulk ops: gemini-3-flash
+- ONLY use models available in LiteLLM. No external models.
+`;
+
+const SOP_REMINDER = `
+## SOP COMPLIANCE REMINDER
+Before ANY process-driven work (deploy, git workflow, swarm, PR, agent spawn, schema change):
+1. Search OB for SOP first
+2. If an SOP exists, FOLLOW IT. Do not improvise.
+3. Update TASKS.md with what you are doing BEFORE you start
+`;
+
+// ============================================================
+// PLUGIN STATE
+// ============================================================
+
+let obQueriedThisTurn = false;
 let sopSearchedThisTurn = false;
-let sopLastUserTs = 0;
-
-// --- subagent-nudge state ---
-let recentExecs = [];
-
-// --- sentiment-tracker state ---
-let lastProcessedMsg = "";
-const SCORECARD_PATH = join(WORKSPACE, "SCORECARD.md");
-
-// --- session-start state ---
-let briefingSent = false;
-
-// --- before_prompt_build state ---
+let sentimentLastMsg = "";
 let promptTurnCount = 0;
 
 // ============================================================
@@ -82,26 +149,27 @@ let promptTurnCount = 0;
 // ============================================================
 
 const plugin = {
-  id: "pai-hooks",
-  name: "PAI Enforcement Hooks",
-  description: "Tool call guards, prompt injection, and behavioral enforcement.",
+  id: "jeraptha",
+  name: "Jeraptha Behavioral Enforcement",
+  description: "ECO hooks, wagering system, and Flash Gold task tracking.",
 
   register(api) {
     const cfg = api.pluginConfig ?? {};
     if (cfg.enabled === false) return;
 
     const log = cfg.debug
-      ? (msg) => api.logger.info(`[pai-hooks] ${msg}`)
+      ? (msg) => api.logger.info(`[jeraptha] ${msg}`)
       : () => {};
 
     // ----------------------------------------------------------
-    // BEFORE_TOOL_CALL: no-self-surgery (PRIORITY: highest)
+    // 1. NO-SELF-SURGERY (before_tool_call, priority 100)
+    //    Carapace Lock -- hard block openclaw.json, approval for workspace files
     // ----------------------------------------------------------
     api.on("before_tool_call", async (event) => {
       const { toolName, params } = event;
       const tn = (toolName || "").toLowerCase();
 
-      // HARD BLOCK: openclaw.json
+      // HARD BLOCK: openclaw.json -- NEVER modifiable
       if (tn === "exec" || tn === "bash") {
         const cmd = params?.command || params?.cmd || "";
         if (HARD_BLOCKED_PATHS.some((p) => p.test(cmd))) {
@@ -116,7 +184,7 @@ const plugin = {
         }
       }
 
-      // APPROVAL REQUIRED: exec operations
+      // APPROVAL REQUIRED: exec operations on protected infrastructure
       if (tn === "exec" || tn === "bash") {
         const cmd = params?.command || params?.cmd || "";
         if (APPROVAL_EXEC.some((p) => p.test(cmd))) {
@@ -133,7 +201,7 @@ const plugin = {
         }
       }
 
-      // APPROVAL REQUIRED: protected file edits
+      // APPROVAL REQUIRED: protected file edits (workspace files, hooks)
       if ((tn === "write" || tn === "edit" || tn === "apply_patch") && params?.path) {
         if (APPROVAL_PATHS.some((p) => p.test(params.path))) {
           log("APPROVAL no-self-surgery: " + params.path);
@@ -153,7 +221,8 @@ const plugin = {
     }, { priority: 100 });
 
     // ----------------------------------------------------------
-    // BEFORE_TOOL_CALL: no-deaf-polls
+    // 2. NO-DEAF-POLLS (before_tool_call, priority 90)
+    //    Antenna Block -- no long process polls that make agent unresponsive
     // ----------------------------------------------------------
     api.on("before_tool_call", async (event) => {
       const { toolName, params } = event;
@@ -165,163 +234,117 @@ const plugin = {
         log("BLOCKED no-deaf-polls: timeout=" + timeout);
         return {
           block: true,
-          blockReason: `DEAF POLL BLOCKED: timeout ${timeout}ms (${Math.round(timeout / 1000)}s) exceeds 10s max. Use tmux instead: \`tmux new-session -d -s name 'cmd'\`. Stay available.`,
+          blockReason: `DEAF POLL BLOCKED: timeout ${timeout}ms (${Math.round(timeout / 1000)}s) exceeds 10s max. Use tmux instead: \`tmux new-session -d -s name 'cmd'\`. Stay available. Never go dark.`,
         };
       }
       return {};
     }, { priority: 90 });
 
     // ----------------------------------------------------------
-    // BEFORE_TOOL_CALL: rate-limiter
+    // 3. OB-GATE (before_tool_call, priority 80)
+    //    Intel First -- HARD BLOCK factual questions without OB search
+    //    Per Jeraptha design: hard blocks, not soft approvals
     // ----------------------------------------------------------
     api.on("before_tool_call", async (event) => {
       const tn = (event.toolName || "").toLowerCase();
-      const limit = RATE_LIMITS[tn];
-      if (!limit) return {};
-      const now = Date.now();
-      const calls = (callLog.get(tn) || []).filter((t) => now - t < limit.windowMs);
-      if (calls.length >= limit.max) {
-        log("BLOCKED rate-limiter: " + tn + " " + calls.length + "x");
-        return {
-          block: true,
-          blockReason: `Rate limit: ${tn} called ${calls.length}x in ${limit.windowMs / 1000}s (max ${limit.max}). Wait before retrying.`,
-        };
+
+      // Track OB searches
+      if (tn === "exec" || tn === "bash") {
+        const cmd = JSON.stringify(event.params || {});
+        if (cmd.includes("open-brain")) {
+          obQueriedThisTurn = true;
+          return {};
+        }
       }
-      calls.push(now);
-      callLog.set(tn, calls);
+      if (tn === "memory_search") {
+        obQueriedThisTurn = true;
+        return {};
+      }
+
+      // Check message sends for factual questions
+      if (tn === "message") {
+        const text = event.params?.text || event.params?.content || "";
+        if (EXEMPT_QUESTIONS.some((p) => p.test(text))) return {};
+        if (QUESTION_PATTERNS.some((p) => p.test(text)) && !obQueriedThisTurn) {
+          log("BLOCKED ob-gate: factual question without OB");
+          return {
+            block: true,
+            blockReason: "OB GATE: You are asking a factual question without checking Open Brain first. Run: ~/.local/bin/mcp2cli open-brain search_all --params '{\"query\": \"your question\"}' FIRST. If OB doesn't have the answer, THEN ask Rico and mention you checked.",
+          };
+        }
+      }
+
       return {};
     }, { priority: 80 });
 
     // ----------------------------------------------------------
-    // BEFORE_TOOL_CALL: law-13 no-silent-autopilot
+    // 4. SOP-GATE (before_tool_call, priority 70)
+    //    Compliance Check -- HARD BLOCK process work without SOP search
+    //    Per Jeraptha design: hard blocks, not soft approvals
     // ----------------------------------------------------------
-    api.on("before_tool_call", async (event, ctx) => {
-      consecutiveCalls++;
-      if (consecutiveCalls > MAX_CONSECUTIVE) {
-        consecutiveCalls = 0;
-        log("BLOCKED law-13: " + MAX_CONSECUTIVE + "+ consecutive calls");
+    api.on("before_tool_call", async (event) => {
+      const tn = (event.toolName || "").toLowerCase();
+      const params = event.params || {};
+
+      // Track SOP searches
+      if (tn === "exec" || tn === "bash") {
+        const cmd = params.command || params.cmd || "";
+        if (/mcp2cli\s+open-brain/i.test(cmd) && SOP_SEARCH_PATTERNS.some((p) => p.test(cmd))) {
+          sopSearchedThisTurn = true;
+          return {};
+        }
+      }
+      if (tn === "memory_search" && SOP_SEARCH_PATTERNS.some((p) => p.test(params.query || ""))) {
+        sopSearchedThisTurn = true;
+        return {};
+      }
+
+      // Agent spawning always needs SOP check
+      if (tn === "sessions_spawn" && !sopSearchedThisTurn) {
+        log("BLOCKED sop-gate: agent spawn without SOP");
         return {
           block: true,
-          blockReason: `LAW 13 (No Silent Autopilot): ${MAX_CONSECUTIVE}+ tool calls without user check-in. Stop and sync -- explain what you did and what's next.`,
+          blockReason: "SOP GATE: Spawning agent without checking for an SOP first. Run: ~/.local/bin/mcp2cli open-brain search_brain --params '{\"query\":\"SOP agent spawn\",\"limit\":5}' BEFORE spawning. If no SOP exists, note it and proceed.",
         };
       }
+
+      // Process-driven exec commands need SOP check
+      if ((tn === "exec" || tn === "bash") && !sopSearchedThisTurn) {
+        const cmd = params.command || params.cmd || "";
+        if (PROCESS_PATTERNS.some((p) => p.test(cmd))) {
+          let taskType = "this operation";
+          if (/deploy/i.test(cmd)) taskType = "deployment";
+          if (/git\s+(push|merge)/i.test(cmd)) taskType = "git workflow";
+          if (/gh\s+pr/i.test(cmd)) taskType = "PR creation";
+          if (/migrat/i.test(cmd)) taskType = "migration";
+          if (/schema/i.test(cmd)) taskType = "schema change";
+          if (/drizzle/i.test(cmd)) taskType = "drizzle migration";
+          if (/swarm/i.test(cmd)) taskType = "code swarm";
+
+          log("BLOCKED sop-gate: " + taskType + " without SOP");
+          return {
+            block: true,
+            blockReason: `SOP GATE: About to do ${taskType} without checking for an SOP. Run: ~/.local/bin/mcp2cli open-brain search_brain --params '{"query":"SOP ${taskType}","limit":5}' BEFORE proceeding. If an SOP exists, FOLLOW IT.`,
+          };
+        }
+      }
+
       return {};
     }, { priority: 70 });
 
     // ----------------------------------------------------------
-    // BEFORE_TOOL_CALL: law-11 no-secrets
+    // 5. TASK-CONTEXT (before_prompt_build, priority 60)
+    //    Flash Gold -- inject TASKS.md every 3 turns, STALLED every turn
     // ----------------------------------------------------------
-    api.on("before_tool_call", async (event) => {
-      const { toolName, params } = event;
-      const tn = (toolName || "").toLowerCase();
-      if (tn !== "exec" && tn !== "bash") return {};
-      const cmd = params?.command || params?.cmd || "";
-      const secretPatterns = [
-        /cat\s+.*\.(env|pem|key|crt|secret)/i,
-        /echo\s+.*\$(.*API_KEY|.*SECRET|.*TOKEN|.*PASSWORD)/i,
-        /printenv\s+(.*KEY|.*SECRET|.*TOKEN|.*PASS)/i,
-        /export\s+.*=(sk-|ghp_|xoxb-|Bearer\s)/i,
-      ];
-      if (secretPatterns.some((p) => p.test(cmd))) {
-        log("BLOCKED law-11: " + cmd.substring(0, 60));
-        return {
-          block: true,
-          blockReason: `LAW 11 (No Secrets): Command may expose secrets. Use vaultwarden-secrets MCP or \`secret\` CLI for credentials.`,
-        };
-      }
-      return {};
-    }, { priority: 60 });
-
-    // ----------------------------------------------------------
-    // BEFORE_TOOL_CALL: law-15 no-litellm-self-surgery
-    // ----------------------------------------------------------
-    api.on("before_tool_call", async (event) => {
-      const { toolName, params } = event;
-      const tn = (toolName || "").toLowerCase();
-      if (tn !== "exec" && tn !== "bash") return {};
-      const cmd = params?.command || params?.cmd || "";
-      const litellmHosts = ["10.71.1.33", "10.71.20.33"];
-      if (litellmHosts.some((h) => cmd.includes(h)) &&
-          /(ssh|ansible|systemctl|restart|stop|config)/i.test(cmd)) {
-        log("BLOCKED law-15: " + cmd.substring(0, 60));
-        return {
-          block: true,
-          blockReason: `LAW 15: Cannot modify LiteLLM infrastructure (${litellmHosts.join(", ")}). You route through LiteLLM -- modifying it is self-surgery. Ask Rico.`,
-        };
-      }
-      return {};
-    }, { priority: 50 });
-
-    // ----------------------------------------------------------
-    // BEFORE_TOOL_CALL: no-unsolicited-images
-    // ----------------------------------------------------------
-    api.on("before_tool_call", async (event) => {
-      const tn = (event.toolName || "").toLowerCase();
-      if (tn === "image" || tn === "image_generate" || tn === "canvas") {
-        log("APPROVAL no-unsolicited-images: " + tn);
-        return {
-          requireApproval: {
-            title: "Image Generation",
-            description: "Did the user ask for an image? Approve if yes.",
-            severity: "info",
-            timeoutMs: 30000,
-            timeoutBehavior: "deny",
-          },
-        };
-      }
-      return {};
-    }, { priority: 40 });
-
-    // ----------------------------------------------------------
-    // AFTER_TOOL_CALL: reset consecutive counter on user message
-    // ----------------------------------------------------------
-    api.on("message_received", async () => {
-      consecutiveCalls = 0;
-    });
-
-    // ----------------------------------------------------------
-    // BEFORE_PROMPT_BUILD: law-reinforcement (every 5 turns)
-    // ----------------------------------------------------------
-    const LAWS = `
-## MANDATORY BEHAVIORAL RULES (enforced -- non-negotiable)
-
-### Tool & Knowledge Rules
-1. **OB FIRST** -- Before asking Rico ANY factual question, search Open Brain first.
-2. **SKILLS FIRST** -- Before doing ANY task manually, check SKILL-INDEX.md.
-3. **SUB-AGENTS** -- For 3+ independent items, spawn parallel workers.
-4. **PIPELINES** -- For multi-step workflows, follow SUPERVISOR.md.
-
-### Behavioral Rules
-5. NEVER send images/media unless user EXPLICITLY asks
-6. NEVER restart gateway, edit openclaw.json, or modify bootstrap files
-7. Keep responses concise but ALWAYS announce what step you are on
-8. ANNOUNCE EVERY STEP. Update Rico every 2-5 min on long tasks. NEVER go silent.
-9. If unsure, ASK Rico first -- do not assume
-10. NEVER repost content the user has already seen
-11. ONE message per response unless multi-part question
-12. If a tool fails, report it immediately
-13. You CANNOT fix your own infrastructure -- ask Rico
-`;
-
     api.on("before_prompt_build", async () => {
       promptTurnCount++;
-      if (promptTurnCount % 5 !== 0) return {};
-      log("INJECTED law-reinforcement (turn " + promptTurnCount + ")");
-      return { appendSystemContext: LAWS };
-    }, { priority: 50 });
-
-    // ----------------------------------------------------------
-    // BEFORE_PROMPT_BUILD: task-context (every 3 turns + stalled)
-    // ----------------------------------------------------------
-    api.on("before_prompt_build", async () => {
-      promptTurnCount++; // shared counter is fine -- both hooks use it
 
       let tasksContent = "";
       try {
-        tasksContent = readFileSync(join(WORKSPACE, "TASKS.md"), "utf-8");
+        tasksContent = readFileSync(TASKS_PATH, "utf-8");
       } catch {
         if (promptTurnCount % 3 === 0) {
-          return { appendSystemContext: "TASKS.md NOT FOUND. Create it immediately." };
+          return { appendSystemContext: "TASKS.md NOT FOUND. Create it immediately. Every task Rico gives you must be tracked." };
         }
         return {};
       }
@@ -329,7 +352,7 @@ const plugin = {
       const hasStalled = tasksContent.includes("STALLED");
       if (!hasStalled && promptTurnCount % 3 !== 0) return {};
 
-      // Extract active/pending sections
+      // Extract active/pending/infrastructure sections
       const lines = tasksContent.split("\n");
       const active = [];
       let capturing = false;
@@ -340,11 +363,18 @@ const plugin = {
       }
       const activeContent = active.join("\n").trim();
 
-      // Get scorecard
+      if (!activeContent || activeContent.includes("_None right now")) {
+        if (promptTurnCount % 3 === 0) {
+          return { appendSystemContext: "TASKS.md: No active tasks. If Rico asked you to do something, ADD IT." + SOP_REMINDER };
+        }
+        return {};
+      }
+
+      // Get scorecard for mode context
       let score = "?", mode = "Standard";
       try {
-        const sc = readFileSync(join(WORKSPACE, "SCORECARD.md"), "utf-8");
-        const m = sc.match(/\*\*Current Score:\s*(-?\d+)\*\*/);
+        const sc = readFileSync(SCORECARD_PATH, "utf-8");
+        const m = sc.match(/Current Score:\s*(-?\d+)/);
         if (m) {
           score = m[1];
           const n = parseInt(score, 10);
@@ -353,220 +383,25 @@ const plugin = {
       } catch {}
 
       const injection = hasStalled
-        ? `\n## STALLED TASK ALERT -- DROP EVERYTHING\n${activeContent}\n\nScore: ${score} (${mode})`
-        : `\n## ACTIVE TASKS\n${activeContent}\n\nScore: ${score} (${mode})`;
+        ? `\nSTALLED TASK ALERT -- DROP EVERYTHING\n${activeContent}\n\nScore: ${score} (${mode})${SOP_REMINDER}`
+        : `\nACTIVE TASKS\n${activeContent}\n\nScore: ${score} (${mode})`;
 
-      log("INJECTED task-context (stalled=" + hasStalled + ")");
+      log("INJECTED task-context (stalled=" + hasStalled + ", turn=" + promptTurnCount + ")");
       return { appendSystemContext: injection };
-    }, { priority: 40 });
+    }, { priority: 60 });
 
     // ----------------------------------------------------------
-    // BEFORE_PROMPT_BUILD: SOP reminder (every 5 turns)
+    // 6. SENTIMENT-TRACKER (before_prompt_build, priority 50)
+    //    Wagering System -- score user sentiment, update SCORECARD.md
     // ----------------------------------------------------------
-    api.on("before_prompt_build", async () => {
-      if (promptTurnCount % 5 !== 0) return {};
-      return {
-        appendSystemContext: `\n## SOP COMPLIANCE\nBefore deploy/git/swarm/PR/spawn/schema work: search OB for SOP first. If exists, follow it.`,
-      };
-    }, { priority: 30 });
-
-    // ----------------------------------------------------------
-    // BEFORE_TOOL_CALL: law-01 never-assume (destructive ops)
-    // ----------------------------------------------------------
-    api.on("before_tool_call", async (event) => {
-      const { toolName, params } = event;
-      const tn = (toolName || "").toLowerCase();
-      let isDestructive = false;
-      if (tn === "exec" || tn === "bash") {
-        const cmd = params?.command || params?.cmd || "";
-        isDestructive = DESTRUCTIVE_PATTERNS.some((p) => p.test(cmd));
-      } else if (tn === "write" || tn === "edit" || tn === "apply_patch") {
-        isDestructive = /\.(json|yaml|yml|toml|conf|cfg|env)$/i.test(params?.path || "");
-      }
-      if (isDestructive) {
-        const target = params?.command || params?.cmd || params?.path || "unknown";
-        log("APPROVAL law-01: " + String(target).substring(0, 60));
-        return {
-          requireApproval: {
-            title: "Destructive Operation",
-            description: `LAW 1: "${String(target).substring(0, 120)}" -- approve to proceed.`,
-            severity: "warning",
-            timeoutMs: 60000,
-            timeoutBehavior: "deny",
-          },
-        };
-      }
-      return {};
-    }, { priority: 55 });
-
-    // ----------------------------------------------------------
-    // BEFORE_TOOL_CALL: law-10 search-ob-first
-    // ----------------------------------------------------------
-    api.on("before_tool_call", async (event) => {
-      const { toolName, params } = event;
-      const tn = (toolName || "").toLowerCase();
-      // Track OB search
-      if (["search_all", "open_brain", "open-brain", "memory_search", "brain_search"].some((t) => tn.includes(t))) {
-        obSearchedThisTurn = true;
-        return {};
-      }
-      if ((tn === "exec" || tn === "bash") && /mcp2cli\s+open-brain|search_all/i.test(params?.command || "")) {
-        obSearchedThisTurn = true;
-        return {};
-      }
-      // Block web search/fetch without prior OB search
-      if (["web_search", "web_fetch"].some((t) => tn.includes(t)) && !obSearchedThisTurn) {
-        log("APPROVAL law-10: " + tn + " without OB search");
-        return {
-          requireApproval: {
-            title: "OB Not Searched",
-            description: `LAW 10: Check Open Brain before ${toolName}. Approve to skip OB and proceed.`,
-            severity: "info",
-            timeoutMs: 30000,
-            timeoutBehavior: "allow",
-          },
-        };
-      }
-      return {};
-    }, { priority: 45 });
-
-    // ----------------------------------------------------------
-    // BEFORE_TOOL_CALL: ob-gate (block factual questions without OB)
-    // ----------------------------------------------------------
-    const QUESTION_PATTERNS = [
-      /what('s| is) the (ip|port|version|password|url|path|config|name|id|key)/i,
-      /where (is|are|can I find)/i, /do you (know|have|remember)/i,
-      /how (do|does|did|is|are)/i, /which (one|version|server|port)/i,
-    ];
-    const EXEMPT_QUESTIONS = [
-      /\bshould (I|we)\b/i, /\bdo you want\b/i, /\bwhat do you think\b/i,
-      /\bwhat('s| is) next\b/i, /\bsound good\b/i,
-    ];
-    let obGateQueriedThisTurn = false;
-
-    api.on("before_tool_call", async (event) => {
-      const tn = (event.toolName || "").toLowerCase();
-      if (tn === "exec" && JSON.stringify(event.params || {}).includes("open-brain")) {
-        obGateQueriedThisTurn = true;
-        return {};
-      }
-      if (tn === "memory_search") { obGateQueriedThisTurn = true; return {}; }
-      if (tn === "message") {
-        const text = event.params?.text || event.params?.content || "";
-        if (EXEMPT_QUESTIONS.some((p) => p.test(text))) return {};
-        if (QUESTION_PATTERNS.some((p) => p.test(text)) && !obGateQueriedThisTurn) {
-          log("APPROVAL ob-gate: factual question without OB");
-          return {
-            requireApproval: {
-              title: "OB Not Checked",
-              description: "You're asking a factual question. Did you check Open Brain first? Approve to send anyway.",
-              severity: "info",
-              timeoutMs: 30000,
-              timeoutBehavior: "allow",
-            },
-          };
-        }
-      }
-      return {};
-    }, { priority: 35 });
-
-    // ----------------------------------------------------------
-    // BEFORE_TOOL_CALL: sop-gate (process work needs SOP check)
-    // ----------------------------------------------------------
-    const PROCESS_PATTERNS = [
-      /\bgit\s+(push|merge|rebase|checkout\s+-b)\b/i, /\bgh\s+(pr|issue)\s+(create|merge)\b/i,
-      /\bdeploy/i, /\bmigrat(e|ion)/i, /\bschema\s+(change|alter|drop|create)\b/i,
-      /\bswarm/i, /\bworkflow.dispatch\b/i,
-    ];
-
-    api.on("before_tool_call", async (event) => {
-      const tn = (event.toolName || "").toLowerCase();
-      // Track SOP searches
-      if ((tn === "exec" || tn === "bash") && /mcp2cli\s+open-brain/i.test(event.params?.command || "") && /sop/i.test(event.params?.command || "")) {
-        sopSearchedThisTurn = true;
-        return {};
-      }
-      if (tn === "memory_search" && /sop/i.test(event.params?.query || "")) {
-        sopSearchedThisTurn = true;
-        return {};
-      }
-      // Check agent spawning
-      if (tn === "sessions_spawn" && !sopSearchedThisTurn) {
-        log("APPROVAL sop-gate: agent spawn without SOP");
-        return {
-          requireApproval: {
-            title: "SOP Not Checked",
-            description: "SOP GATE: Spawning agent without SOP search. Approve to proceed anyway.",
-            severity: "info",
-            timeoutMs: 30000,
-            timeoutBehavior: "allow",
-          },
-        };
-      }
-      // Check process-driven exec
-      if ((tn === "exec" || tn === "bash") && PROCESS_PATTERNS.some((p) => p.test(event.params?.command || "")) && !sopSearchedThisTurn) {
-        log("APPROVAL sop-gate: process work without SOP");
-        return {
-          requireApproval: {
-            title: "SOP Not Checked",
-            description: "SOP GATE: Process-driven work without SOP search. Approve to proceed.",
-            severity: "info",
-            timeoutMs: 30000,
-            timeoutBehavior: "allow",
-          },
-        };
-      }
-      return {};
-    }, { priority: 30 });
-
-    // ----------------------------------------------------------
-    // BEFORE_TOOL_CALL: subagent-nudge (batch pattern detection)
-    // ----------------------------------------------------------
-    api.on("before_tool_call", async (event) => {
-      const tn = (event.toolName || "").toLowerCase();
-      if (tn === "exec" || tn === "bash") {
-        const cmd = JSON.stringify(event.params || {}).substring(0, 100);
-        recentExecs.push(cmd);
-        if (recentExecs.length > 10) recentExecs.shift();
-        if (recentExecs.length >= 3) {
-          const last3 = recentExecs.slice(-3);
-          const prefixes = last3.map((c) => (c.match(/"command"\s*:\s*"([^"]{0,40})/) || ["", c.substring(0, 40)])[1]);
-          const unique = new Set(prefixes);
-          if (unique.size === 1) {
-            log("NUDGE subagent-nudge: batch pattern");
-            recentExecs = [];
-            // Nudge, don't block
-          }
-        }
-      }
-      if (tn === "message" || tn === "memory_search") recentExecs = [];
-      return {};
-    }, { priority: 20 });
-
-    // ----------------------------------------------------------
-    // BEFORE_PROMPT_BUILD: sentiment-tracker
-    // ----------------------------------------------------------
-    const POSITIVE = [
-      { p: /\b(nice|good\s*job|perfect|excellent|great|awesome|nailed\s*it)\b/i, w: 2, l: "praise" },
-      { p: /\b(thanks|thank\s*you|appreciate)\b/i, w: 1, l: "gratitude" },
-      { p: /👍|👏|🎉|💪|🔥|✅/u, w: 2, l: "positive-emoji" },
-      { p: /\b(crushing\s*it|killing\s*it|on\s*it)\b/i, w: 3, l: "strong-praise" },
-    ];
-    const NEGATIVE = [
-      { p: /\b(wtf|what\s*the\s*(fuck|hell)|are\s*you\s*(serious|kidding))\b/i, w: -3, l: "anger" },
-      { p: /\b(dumb|stupid|wrong|broken|bad|terrible)\b/i, w: -2, l: "criticism" },
-      { p: /\b(stop|no|don't|quit|enough)\b/i, w: -1, l: "correction" },
-      { p: /\b(again|keeps?\s*happening|every\s*time|how\s*many\s*times)\b/i, w: -3, l: "repeated-failure" },
-      { p: /😤|😡|🤦|💀|👎/u, w: -2, l: "negative-emoji" },
-    ];
-
     api.on("before_prompt_build", async (event) => {
       const messages = event.messages || [];
       const lastUser = [...messages].reverse().find((m) => m.role === "user");
       if (!lastUser) return {};
+
       const text = typeof lastUser.content === "string" ? lastUser.content : JSON.stringify(lastUser.content || "");
-      if (text === lastProcessedMsg) return {};
-      lastProcessedMsg = text;
+      if (text === sentimentLastMsg) return {};
+      sentimentLastMsg = text;
 
       let total = 0;
       const triggers = [];
@@ -577,7 +412,8 @@ const plugin = {
       // Update SCORECARD.md
       const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
       const sentiment = total > 0 ? "POSITIVE" : "NEGATIVE";
-      const entry = `\n- [${ts}] ${total > 0 ? "✅" : "❌"} ${sentiment} (${total > 0 ? "+" : ""}${total}) | ${triggers.join(", ")} | "${text.slice(0, 100)}"`;
+      const entry = `\n- [${ts}] ${total > 0 ? "+" : ""}${total} ${sentiment} | ${triggers.join(", ")} | "${text.slice(0, 100)}"`;
+
       try {
         if (existsSync(SCORECARD_PATH)) {
           let sc = readFileSync(SCORECARD_PATH, "utf-8");
@@ -593,47 +429,37 @@ const plugin = {
             sc = sc.replace(/Current Score:\s*-?\d+/, `Current Score: ${newScore}`);
           }
           writeFileSync(SCORECARD_PATH, sc, "utf-8");
-          log("sentiment: " + sentiment + " (" + total + ") -> score updated");
+          log("sentiment: " + sentiment + " (" + total + ")");
         }
       } catch {}
 
       if (total < -2) {
-        return { appendSystemContext: `\n## BEHAVIORAL ALERT\nUser expressed ${sentiment.toLowerCase()} sentiment (${total}). Triggers: ${triggers.join(", ")}. Acknowledge the feedback. Own errors specifically.` };
+        return {
+          appendSystemContext: `\nBEHAVIORAL ALERT\nUser expressed ${sentiment.toLowerCase()} sentiment (${total}). Triggers: ${triggers.join(", ")}. Acknowledge the feedback. Own errors specifically. Check SCORECARD.md for patterns.`,
+        };
       }
       return {};
-    }, { priority: 60 });
+    }, { priority: 50 });
 
     // ----------------------------------------------------------
-    // BEFORE_PROMPT_BUILD: session-start (one-time briefing)
+    // 7. LAW-REINFORCEMENT (before_prompt_build, priority 40)
+    //    Rule re-injection every 5 turns to fight prompt degradation
     // ----------------------------------------------------------
-    api.on("before_prompt_build", async (event, ctx) => {
-      if (briefingSent) return {};
-      const sk = ctx?.sessionKey || "";
-      if (sk.includes("isolated") || sk.includes("heartbeat")) return {};
-      briefingSent = true;
-      log("INJECTED session-start briefing");
-      return {
-        appendSystemContext: `
-## SESSION BRIEFING (MANDATORY)
-Fresh session. Before responding, run:
-1. Pull OB: \`~/.local/bin/mcp2cli open-brain session_load --params '{"project": "skippy-main"}'\`
-2. Check git: \`git branch --show-current && git status --short | head -10 && git log --oneline -5\`
-3. Present briefing: Branch, Dirty, Recent commits, Last session, Done, Carry-forward, Blockers, Next
-4. End with "Ready. What's next?" -- then STOP.`,
-      };
-    }, { priority: 70 });
+    api.on("before_prompt_build", async () => {
+      if (promptTurnCount % 5 !== 0) return {};
+      log("INJECTED law-reinforcement (turn " + promptTurnCount + ")");
+      return { appendSystemContext: LAWS };
+    }, { priority: 40 });
 
     // ----------------------------------------------------------
-    // Reset OB/SOP state on new user messages
+    // STATE RESET on new user message
     // ----------------------------------------------------------
     api.on("message_received", async () => {
-      consecutiveCalls = 0;
-      obSearchedThisTurn = false;
-      obGateQueriedThisTurn = false;
+      obQueriedThisTurn = false;
       sopSearchedThisTurn = false;
     });
 
-    log("registered: 13 before_tool_call + 5 before_prompt_build + 1 message_received");
+    log("registered: 4 before_tool_call + 3 before_prompt_build + 1 message_received (7 Jeraptha hooks)");
   },
 };
 
