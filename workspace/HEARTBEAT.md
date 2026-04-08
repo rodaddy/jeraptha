@@ -50,6 +50,7 @@ For EACH task in TASKS.md:
 
 ### 🔴 Active / 🔧 In Progress tasks:
 - **Am I actually working on this right now?** If yes, update the status/details and stamp `Last HB: YYYY-MM-DD HH:MM`.
+- **Have I gone silent?** If a task is active and the last message in that task's channel is older than 3 minutes, send an update NOW: "Still working on [task name] -- [brief status]." Going dark during active work is a scorecard violation (-3). The user should NEVER wonder what's happening.
 - **Is there an SOP for this type of work?** Check the SOP field. If it says "TODO: create" or is missing, search OB: `mcp2cli open-brain search_brain --params '{"query":"SOP <task-type>"}'`. If an SOP exists, UPDATE TASKS.md with the reference. If you're not following it, START following it.
 
 ### 🟡 Pending / ⏳ Waiting tasks:
