@@ -4,6 +4,19 @@
 
 ---
 
+## v2.2.0 -- 2026-04-08 -- "You Forgot You Were Talking To Someone"
+
+### Added
+- **Conversation freshness gate** (before_tool_call, p62) -- blocks work if CONVERSATIONS.md hasn't been updated in 15+ turns. Same pattern as task gate. Configurable via `conversationFreshnessTurns`.
+- **`/conversations` skill** -- display active conversation index with heat levels
+- **Per-conversation detail files** -- `conversations/` directory with per-channel context files (template provided)
+- **conversation-dream.sh** -- dream function that scores conversations by recency, sets heat levels (hot/warm/cool/cold), reorders index
+
+### Fixed
+- tmux dylib crash on Air (`libutf8proc.3.dylib` not found) -- `brew reinstall utf8proc tmux`
+
+---
+
 ## v2.1.0 -- 2026-04-08 -- "If It Doesn't Block, It Gets Ignored"
 
 **Evidence from today: 14 task-context injections, 9 law-reinforcement injections. Zero compliance. One sop-gate hard block. Full compliance.**

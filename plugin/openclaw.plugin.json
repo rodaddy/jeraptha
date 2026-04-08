@@ -1,8 +1,8 @@
 {
   "id": "jeraptha",
   "name": "Jeraptha Behavioral Enforcement",
-  "description": "ECO hooks, wagering system, and Flash Gold task tracking for OpenClaw agents. 11 hooks: 8 before_tool_call (7 blocking + 1 tracker) + 2 before_prompt_build + 1 message_received. v2.1: blocking gates replace toothless prompt injections.",
-  "version": "2.1.0",
+  "description": "ECO hooks, wagering system, and Flash Gold task tracking for OpenClaw agents. 12 hooks: 9 before_tool_call (8 blocking + 1 tracker) + 2 before_prompt_build + 1 message_received. v2.2: conversation tracking gate.",
+  "version": "2.2.0",
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
@@ -12,7 +12,8 @@
       "taskFreshnessTurns": { "type": "number", "default": 10 },
       "commGateThreshold": { "type": "number", "default": 8 },
       "heartbeatIntervalMs": { "type": "number", "default": 600000 },
-      "gracePeriodTurns": { "type": "number", "default": 5 }
+      "gracePeriodTurns": { "type": "number", "default": 5 },
+      "conversationFreshnessTurns": { "type": "number", "default": 15 }
     }
   }
 }

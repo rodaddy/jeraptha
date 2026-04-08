@@ -2,11 +2,11 @@
 // Typed plugin hooks (api.on) -- the ONLY dispatch path that works for
 // before_tool_call and before_prompt_build events in OC v2026.4.x
 //
-// v2.1.0 -- 11 hooks (8 before_tool_call + 2 before_prompt_build + 1 message_received)
+// v2.2.0 -- 12 hooks (9 before_tool_call + 2 before_prompt_build + 1 message_received)
 //   before_tool_call:    state-tracker (p110), no-self-surgery (p100),
 //                        no-deaf-polls (p90), ob-gate (p80), sop-gate (p70),
-//                        task-freshness-gate (p65), communication-gate (p55),
-//                        heartbeat-gate (p45)
+//                        task-freshness-gate (p65), conversation-freshness-gate (p62),
+//                        communication-gate (p55), heartbeat-gate (p45)
 //   before_prompt_build: sentiment-tracker (p50), task-stalled-alert (p40)
 //   message_received:    state reset + turn counter
 //
@@ -21,6 +21,7 @@ import { join } from "path";
 const WORKSPACE = join(process.env.HOME || "/Users/rico", ".openclaw/workspace");
 const SCORECARD_PATH = join(WORKSPACE, "SCORECARD.md");
 const TASKS_PATH = join(WORKSPACE, "TASKS.md");
+const CONVERSATIONS_PATH = join(WORKSPACE, "CONVERSATIONS.md");
 
 // ============================================================
 // NO-SELF-SURGERY constants
@@ -115,8 +116,9 @@ let sopSearchedThisTurn = false;
 let sentimentLastMsg = "";
 let promptTurnCount = 0;
 
-// -- Blocking gate state (v2.1 -- "if it doesn't block, it gets ignored")
+// -- Blocking gate state (v2.1+ -- "if it doesn't block, it gets ignored")
 let lastTasksWriteTurn = 0;
+let lastConversationsWriteTurn = 0;
 let lastScorecardWriteTime = Date.now();  // grace: treat boot as fresh
 let toolCallsSinceMessage = 0;
 let currentTurn = 0;
@@ -156,6 +158,10 @@ const plugin = {
         if (/SCORECARD\.md/i.test(params.path)) {
           lastScorecardWriteTime = Date.now();
           log("state-tracker: SCORECARD.md write");
+        }
+        if (/CONVERSATIONS\.md/i.test(params.path)) {
+          lastConversationsWriteTurn = currentTurn;
+          log("state-tracker: CONVERSATIONS.md write (turn " + currentTurn + ")");
         }
       }
 
@@ -380,7 +386,35 @@ const plugin = {
     }, { priority: 65 });
 
     // ----------------------------------------------------------
-    // 6. COMMUNICATION-GATE (before_tool_call, priority 55)
+    // 6. CONVERSATION-FRESHNESS-GATE (before_tool_call, priority 62)
+    //    Blocks work tools if CONVERSATIONS.md hasn't been updated.
+    //    Same pattern as task-freshness -- if it doesn't block, he ignores it.
+    // ----------------------------------------------------------
+    const convTurnThreshold = cfg.conversationFreshnessTurns || 15;
+
+    api.on("before_tool_call", async (event) => {
+      const tn = (event.toolName || "").toLowerCase();
+
+      if (tn !== "exec" && tn !== "bash" && tn !== "message") return {};
+      if (currentTurn <= graceTurns) return {};
+
+      const turnsSinceUpdate = currentTurn - lastConversationsWriteTurn;
+      if (turnsSinceUpdate <= convTurnThreshold) return {};
+
+      try {
+        const stat = statSync(CONVERSATIONS_PATH);
+        if (Date.now() - stat.mtimeMs < 120000) return {};
+      } catch {}
+
+      log("BLOCKED conversation-freshness-gate: " + turnsSinceUpdate + " turns since CONVERSATIONS.md update");
+      return {
+        block: true,
+        blockReason: `CONVERSATIONS GATE: CONVERSATIONS.md hasn't been updated in ${turnsSinceUpdate} turns. Update your active conversation context BEFORE continuing. Write to ${CONVERSATIONS_PATH} -- update topics, heat, and what's current.`,
+      };
+    }, { priority: 62 });
+
+    // ----------------------------------------------------------
+    // 7. COMMUNICATION-GATE (before_tool_call, priority 55)
     //    Blocks work tools if too many tool calls without a message.
     //    Enforces "never go dark" mechanically -- not by suggestion.
     // ----------------------------------------------------------
@@ -528,7 +562,7 @@ const plugin = {
       currentTurn++;
     });
 
-    log("registered: 8 before_tool_call (7 blocking + 1 tracker) + 2 before_prompt_build + 1 message_received (11 Jeraptha v2.1 hooks)");
+    log("registered: 9 before_tool_call (8 blocking + 1 tracker) + 2 before_prompt_build + 1 message_received (12 Jeraptha v2.2 hooks)");
   },
 };
 
