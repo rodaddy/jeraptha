@@ -120,10 +120,15 @@ const plugin = {
       if (tn === "exec" || tn === "bash") {
         const cmd = params?.command || params?.cmd || "";
         if (APPROVAL_EXEC.some((p) => p.test(cmd))) {
-          log("BLOCKED no-self-surgery (approval): " + cmd.substring(0, 60));
+          log("APPROVAL no-self-surgery: " + cmd.substring(0, 60));
           return {
-            block: true,
-            blockReason: `ECO APPROVAL REQUIRED: "${cmd.substring(0, 80)}" needs user approval. Explain WHAT and WHY, then wait for OK.`,
+            requireApproval: {
+              title: "Protected Operation",
+              description: `ECO: "${cmd.substring(0, 120)}" targets protected infrastructure. Approve to proceed.`,
+              severity: "warning",
+              timeoutMs: 60000,
+              timeoutBehavior: "deny",
+            },
           };
         }
       }
@@ -131,10 +136,15 @@ const plugin = {
       // APPROVAL REQUIRED: protected file edits
       if ((tn === "write" || tn === "edit" || tn === "apply_patch") && params?.path) {
         if (APPROVAL_PATHS.some((p) => p.test(params.path))) {
-          log("BLOCKED no-self-surgery (approval): " + params.path);
+          log("APPROVAL no-self-surgery: " + params.path);
           return {
-            block: true,
-            blockReason: `ECO APPROVAL REQUIRED: Cannot modify "${params.path}" without user approval. Explain WHAT/WHY and make a backup first.`,
+            requireApproval: {
+              title: "Protected File Edit",
+              description: `ECO: Editing "${params.path}" -- make a backup first. Approve to proceed.`,
+              severity: "warning",
+              timeoutMs: 60000,
+              timeoutBehavior: "deny",
+            },
           };
         }
       }
@@ -248,10 +258,15 @@ const plugin = {
     api.on("before_tool_call", async (event) => {
       const tn = (event.toolName || "").toLowerCase();
       if (tn === "image" || tn === "image_generate" || tn === "canvas") {
-        log("BLOCKED no-unsolicited-images: " + tn);
+        log("APPROVAL no-unsolicited-images: " + tn);
         return {
-          block: true,
-          blockReason: `Image generation/send blocked. Only generate images when the user explicitly asks with words like "show me", "picture", "image", "draw", "meme", "generate".`,
+          requireApproval: {
+            title: "Image Generation",
+            description: "Did the user ask for an image? Approve if yes.",
+            severity: "info",
+            timeoutMs: 30000,
+            timeoutBehavior: "deny",
+          },
         };
       }
       return {};
@@ -370,10 +385,15 @@ const plugin = {
       }
       if (isDestructive) {
         const target = params?.command || params?.cmd || params?.path || "unknown";
-        log("BLOCKED law-01: " + String(target).substring(0, 60));
+        log("APPROVAL law-01: " + String(target).substring(0, 60));
         return {
-          block: true,
-          blockReason: `LAW 1 (Never Assume): Destructive operation blocked -- "${String(target).substring(0, 80)}". Explain what you are about to do and get explicit user confirmation first.`,
+          requireApproval: {
+            title: "Destructive Operation",
+            description: `LAW 1: "${String(target).substring(0, 120)}" -- approve to proceed.`,
+            severity: "warning",
+            timeoutMs: 60000,
+            timeoutBehavior: "deny",
+          },
         };
       }
       return {};
@@ -396,10 +416,15 @@ const plugin = {
       }
       // Block web search/fetch without prior OB search
       if (["web_search", "web_fetch"].some((t) => tn.includes(t)) && !obSearchedThisTurn) {
-        log("BLOCKED law-10: " + tn + " without OB search");
+        log("APPROVAL law-10: " + tn + " without OB search");
         return {
-          block: true,
-          blockReason: `LAW 10 (Search OB First): Search Open Brain before using ${toolName}. The answer may already be in the knowledge base.`,
+          requireApproval: {
+            title: "OB Not Searched",
+            description: `LAW 10: Check Open Brain before ${toolName}. Approve to skip OB and proceed.`,
+            severity: "info",
+            timeoutMs: 30000,
+            timeoutBehavior: "allow",
+          },
         };
       }
       return {};
@@ -430,10 +455,15 @@ const plugin = {
         const text = event.params?.text || event.params?.content || "";
         if (EXEMPT_QUESTIONS.some((p) => p.test(text))) return {};
         if (QUESTION_PATTERNS.some((p) => p.test(text)) && !obGateQueriedThisTurn) {
-          log("BLOCKED ob-gate: factual question without OB");
+          log("APPROVAL ob-gate: factual question without OB");
           return {
-            block: true,
-            blockReason: "OB GATE: You're asking Rico a factual question without checking Open Brain first. Search OB, then ask if not found.",
+            requireApproval: {
+              title: "OB Not Checked",
+              description: "You're asking a factual question. Did you check Open Brain first? Approve to send anyway.",
+              severity: "info",
+              timeoutMs: 30000,
+              timeoutBehavior: "allow",
+            },
           };
         }
       }
@@ -462,13 +492,29 @@ const plugin = {
       }
       // Check agent spawning
       if (tn === "sessions_spawn" && !sopSearchedThisTurn) {
-        log("BLOCKED sop-gate: agent spawn without SOP");
-        return { block: true, blockReason: "SOP GATE: Search OB for SOP before spawning agents." };
+        log("APPROVAL sop-gate: agent spawn without SOP");
+        return {
+          requireApproval: {
+            title: "SOP Not Checked",
+            description: "SOP GATE: Spawning agent without SOP search. Approve to proceed anyway.",
+            severity: "info",
+            timeoutMs: 30000,
+            timeoutBehavior: "allow",
+          },
+        };
       }
       // Check process-driven exec
       if ((tn === "exec" || tn === "bash") && PROCESS_PATTERNS.some((p) => p.test(event.params?.command || "")) && !sopSearchedThisTurn) {
-        log("BLOCKED sop-gate: process work without SOP");
-        return { block: true, blockReason: "SOP GATE: Search OB for SOP before process-driven work (deploy, git push, PR, migration, schema change)." };
+        log("APPROVAL sop-gate: process work without SOP");
+        return {
+          requireApproval: {
+            title: "SOP Not Checked",
+            description: "SOP GATE: Process-driven work without SOP search. Approve to proceed.",
+            severity: "info",
+            timeoutMs: 30000,
+            timeoutBehavior: "allow",
+          },
+        };
       }
       return {};
     }, { priority: 30 });
