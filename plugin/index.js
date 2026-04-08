@@ -378,10 +378,11 @@ const plugin = {
         if (Date.now() - stat.mtimeMs < 60000) return {};
       } catch {}
 
+      const blocked = event.params?.command || event.params?.cmd || event.params?.text || tn;
       log("BLOCKED task-freshness-gate: " + turnsSinceUpdate + " turns since TASKS.md update");
       return {
         block: true,
-        blockReason: `TASK GATE: TASKS.md hasn't been updated in ${turnsSinceUpdate} turns. Update your active task status BEFORE continuing work. Write to ${TASKS_PATH} now -- update Last HB timestamps, status, and what you're doing.`,
+        blockReason: `TASK GATE: TASKS.md hasn't been updated in ${turnsSinceUpdate} turns. 1) Write to ${TASKS_PATH} now -- update Last HB timestamps, status, what you're doing. 2) Then IMMEDIATELY resume what you were doing (you were about to: ${String(blocked).substring(0, 80)}). Do NOT stop after updating -- the update is a pit stop, not the destination.`,
       };
     }, { priority: 65 });
 
@@ -406,10 +407,11 @@ const plugin = {
         if (Date.now() - stat.mtimeMs < 120000) return {};
       } catch {}
 
+      const blockedConv = event.params?.command || event.params?.cmd || event.params?.text || tn;
       log("BLOCKED conversation-freshness-gate: " + turnsSinceUpdate + " turns since CONVERSATIONS.md update");
       return {
         block: true,
-        blockReason: `CONVERSATIONS GATE: CONVERSATIONS.md hasn't been updated in ${turnsSinceUpdate} turns. Update your active conversation context BEFORE continuing. Write to ${CONVERSATIONS_PATH} -- update topics, heat, and what's current.`,
+        blockReason: `CONVERSATIONS GATE: CONVERSATIONS.md hasn't been updated in ${turnsSinceUpdate} turns. 1) Write to ${CONVERSATIONS_PATH} -- update topics, heat, what's current. 2) Then IMMEDIATELY resume what you were doing (you were about to: ${String(blockedConv).substring(0, 80)}). Do NOT stop after updating -- the update is a pit stop, not the destination.`,
       };
     }, { priority: 62 });
 
@@ -431,10 +433,11 @@ const plugin = {
 
       if (toolCallsSinceMessage <= commThreshold) return {};
 
+      const blockedComm = event.params?.command || event.params?.cmd || tn;
       log("BLOCKED communication-gate: " + toolCallsSinceMessage + " tool calls without message");
       return {
         block: true,
-        blockReason: `COMMS GATE: You've made ${toolCallsSinceMessage} tool calls without sending a status update. Post a progress message to the active channel BEFORE continuing. Your user should NEVER wonder what's happening.`,
+        blockReason: `COMMS GATE: You've made ${toolCallsSinceMessage} tool calls without sending a status update. 1) Post a progress message to the active channel NOW. 2) Then IMMEDIATELY resume what you were doing (you were about to: ${String(blockedComm).substring(0, 80)}). Do NOT stop after posting -- the update is a pit stop, not the destination.`,
       };
     }, { priority: 55 });
 
@@ -546,10 +549,11 @@ const plugin = {
       if (elapsed <= heartbeatMs) return {};
 
       const mins = Math.round(elapsed / 60000);
+      const blockedHB = event.params?.command || event.params?.cmd || event.params?.text || tn;
       log("BLOCKED heartbeat-gate: " + mins + " min since scorecard update");
       return {
         block: true,
-        blockReason: `HEARTBEAT GATE: No heartbeat activity in ${mins} minutes. Run your heartbeat NOW: 1) Read TASKS.md, 2) Update SCORECARD.md, 3) session_save to OB. Write to ${SCORECARD_PATH} to clear this gate.`,
+        blockReason: `HEARTBEAT GATE: No heartbeat activity in ${mins} minutes. 1) Run heartbeat: read TASKS.md, update SCORECARD.md, session_save to OB. 2) Then IMMEDIATELY resume what you were doing (you were about to: ${String(blockedHB).substring(0, 80)}). Do NOT stop after the heartbeat -- it's a pit stop, not the destination.`,
       };
     }, { priority: 45 });
 
