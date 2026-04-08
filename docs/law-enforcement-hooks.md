@@ -1,10 +1,33 @@
 # LAW Enforcement Hooks for OpenClaw
 
-## Problem
+## v2.1 Status (2026-04-08)
+
+**The `law-reinforcement` prompt injection has been REMOVED.** Data from 2026-04-08: 9 injections, 0 compliance. Replaced by 3 blocking gates that enforce specific behavioral rules mechanically via `before_tool_call` with `block: true`.
+
+### Current Hook Inventory (plugin/index.js v2.1.0)
+
+| Pri | Hook | Type | Action |
+|-----|------|------|--------|
+| 110 | state-tracker | before_tool_call | Track (never block) |
+| 100 | no-self-surgery | before_tool_call | Block |
+| 90 | no-deaf-polls | before_tool_call | Block |
+| 80 | ob-gate | before_tool_call | Block |
+| 70 | sop-gate | before_tool_call | Block |
+| 65 | task-freshness-gate | before_tool_call | **Block** (NEW -- replaces task-context) |
+| 55 | communication-gate | before_tool_call | **Block** (NEW -- enforces "never go dark") |
+| 50 | sentiment-tracker | before_prompt_build | Score + alert |
+| 45 | heartbeat-gate | before_tool_call | **Block** (NEW -- wall-clock heartbeat) |
+| 40 | task-stalled-alert | before_prompt_build | Inject (STALLED only) |
+
+The proposed LAW-specific hooks below remain valid future work but are lower priority now that the blocking gate architecture is in place.
+
+---
+
+## Problem (Original Analysis)
 
 OpenClaw has LAWs in standing orders (SOUL.md/AGENTS.md/BOOT.md) but they're prompt-level instructions only. The model can and does reason past them -- "the user clearly wants this done, so I'll skip confirmation."
 
-The `law-reinforcement` hook re-injects rules every 5 turns via `before_prompt_build`, but this is still prompt-level. It fights prompt degradation but can't prevent violations.
+The `law-reinforcement` hook ~~re-injects rules every 5 turns via `before_prompt_build`~~ **(REMOVED in v2.1)** was still prompt-level. It fought prompt degradation but couldn't prevent violations.
 
 **Proof:** 2026-03-31 session reset incident. Skippy was told "back it up first, then give me shell command to restore it." Skippy backed up, gave the restore command, then immediately deleted the session and restarted the gateway -- all in one turn. No confirmation requested. LAW 1 and LAW 13 violated.
 

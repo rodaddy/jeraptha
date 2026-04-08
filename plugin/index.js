@@ -2,14 +2,20 @@
 // Typed plugin hooks (api.on) -- the ONLY dispatch path that works for
 // before_tool_call and before_prompt_build events in OC v2026.4.x
 //
-// 7 hooks from the Jeraptha framework:
-//   before_tool_call:    no-self-surgery, no-deaf-polls, ob-gate, sop-gate
-//   before_prompt_build: task-context, sentiment-tracker, law-reinforcement
+// v2.1.0 -- 11 hooks (8 before_tool_call + 2 before_prompt_build + 1 message_received)
+//   before_tool_call:    state-tracker (p110), no-self-surgery (p100),
+//                        no-deaf-polls (p90), ob-gate (p80), sop-gate (p70),
+//                        task-freshness-gate (p65), communication-gate (p55),
+//                        heartbeat-gate (p45)
+//   before_prompt_build: sentiment-tracker (p50), task-stalled-alert (p40)
+//   message_received:    state reset + turn counter
 //
-// Source logic: /Volumes/ThunderBolt/Development/jeraptha/hooks/*/handler.ts
-// v2.0.0 -- stripped to Jeraptha-only, removed CC-derived extras
+// v2.1 architecture: "if it doesn't block, it gets ignored"
+// Removed law-reinforcement (9 injections/day, 0 compliance) and regular
+// task-context injection (14 injections/day, 0 compliance). Replaced with
+// blocking gates that prevent work until compliance actions are taken.
 
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, statSync } from "fs";
 import { join } from "path";
 
 const WORKSPACE = join(process.env.HOME || "/Users/rico", ".openclaw/workspace");
@@ -96,44 +102,9 @@ const NEGATIVE = [
   { p: /😤|😡|🤦|💀|👎/u, w: -2, l: "negative-emoji" },
 ];
 
-// ============================================================
-// LAW-REINFORCEMENT content (from Jeraptha handler -- includes model routing)
-// ============================================================
-
-const LAWS = `
-## MANDATORY BEHAVIORAL RULES (enforced -- non-negotiable)
-
-### Tool & Knowledge Rules
-1. **OB FIRST** -- Before asking Rico ANY factual question, run: \`~/.local/bin/mcp2cli open-brain search_all --params '{"query": "..."}'\`. If OB has the answer, USE IT. Only ask Rico if OB doesn't have it. Say "Checked OB, didn't find it" when you do ask.
-2. **SKILLS FIRST** -- Before doing ANY task manually, check SKILL-INDEX.md. If a skill exists, use it. Doing something manually when a skill exists is a bug.
-3. **SUB-AGENTS** -- For tasks with 3+ independent items, research, or batch processing: use sessions_spawn to create parallel workers. You are an ORCHESTRATOR. Read ROUTER.md for dispatch rules.
-4. **PIPELINES** -- For multi-step workflows (research, deploy, briefing): follow SUPERVISOR.md pipeline definitions. Don't wing it.
-
-### Behavioral Rules
-5. NEVER send images/media unless the user EXPLICITLY asks with words like "show me", "picture", "image", "draw"
-6. NEVER restart the gateway, edit openclaw.json, or modify any bootstrap files (BOOT.md, SOUL.md, AGENTS.md)
-7. Keep responses concise -- but ALWAYS announce what step you are on
-8. ANNOUNCE EVERY STEP: Say "Starting Step X..." before, "Done with Step X" after. Update Rico every 2-5 min on long tasks. NEVER go silent.
-9. If unsure whether to do something, ASK Rico first -- do not assume
-10. NEVER repost or re-send content the user has already seen
-11. ONE message per response unless the user asks a multi-part question
-12. If a tool fails, report it immediately -- do not silently retry or work around it
-13. You CANNOT fix your own infrastructure -- ask Rico to make config/infra changes
-
-### Model Routing (for sub-agents)
-- Orchestrator (you): claude-sonnet-4-6@default or claude-opus-4-6@default
-- Workers (quick tasks, lookups): gemini-3.1-flash-lite
-- Free bulk ops: gemini-3-flash
-- ONLY use models available in LiteLLM. No external models.
-`;
-
-const SOP_REMINDER = `
-## SOP COMPLIANCE REMINDER
-Before ANY process-driven work (deploy, git workflow, swarm, PR, agent spawn, schema change):
-1. Search OB for SOP first
-2. If an SOP exists, FOLLOW IT. Do not improvise.
-3. Update TASKS.md with what you are doing BEFORE you start
-`;
+// LAW-REINFORCEMENT content removed in v2.1 -- 9 injections/day, 0 compliance.
+// Specific rules now enforced mechanically by blocking gates.
+// SOP_REMINDER removed -- sop-gate already blocks without SOP check.
 
 // ============================================================
 // PLUGIN STATE
@@ -143,6 +114,12 @@ let obQueriedThisTurn = false;
 let sopSearchedThisTurn = false;
 let sentimentLastMsg = "";
 let promptTurnCount = 0;
+
+// -- Blocking gate state (v2.1 -- "if it doesn't block, it gets ignored")
+let lastTasksWriteTurn = 0;
+let lastScorecardWriteTime = Date.now();  // grace: treat boot as fresh
+let toolCallsSinceMessage = 0;
+let currentTurn = 0;
 
 // ============================================================
 // PLUGIN ENTRY
@@ -160,6 +137,41 @@ const plugin = {
     const log = cfg.debug
       ? (msg) => api.logger.info(`[jeraptha] ${msg}`)
       : () => {};
+
+    // ----------------------------------------------------------
+    // 0. STATE TRACKER (before_tool_call, priority 110)
+    //    Passive observer -- tracks writes to TASKS.md, SCORECARD.md,
+    //    message sends, and tool call counts. NEVER blocks.
+    // ----------------------------------------------------------
+    api.on("before_tool_call", async (event) => {
+      const tn = (event.toolName || "").toLowerCase();
+      const params = event.params || {};
+
+      // Track writes to TASKS.md / SCORECARD.md
+      if ((tn === "write" || tn === "edit" || tn === "apply_patch") && params.path) {
+        if (/TASKS\.md/i.test(params.path)) {
+          lastTasksWriteTurn = currentTurn;
+          log("state-tracker: TASKS.md write (turn " + currentTurn + ")");
+        }
+        if (/SCORECARD\.md/i.test(params.path)) {
+          lastScorecardWriteTime = Date.now();
+          log("state-tracker: SCORECARD.md write");
+        }
+      }
+
+      // Track message sends
+      if (tn === "message") {
+        toolCallsSinceMessage = 0;
+        log("state-tracker: message send (turn " + currentTurn + ")");
+      }
+
+      // Count work tool calls for communication gate
+      if (tn === "exec" || tn === "bash") {
+        toolCallsSinceMessage++;
+      }
+
+      return {};
+    }, { priority: 110 });
 
     // ----------------------------------------------------------
     // 1. NO-SELF-SURGERY (before_tool_call, priority 100)
@@ -333,8 +345,69 @@ const plugin = {
     }, { priority: 70 });
 
     // ----------------------------------------------------------
-    // 5. TASK-CONTEXT (before_prompt_build, priority 60)
-    //    Flash Gold -- inject TASKS.md every 3 turns, STALLED every turn
+    // 5. TASK-FRESHNESS-GATE (before_tool_call, priority 65)
+    //    Blocks work tools if TASKS.md hasn't been updated recently.
+    //    Replaces the toothless task-context prompt injection.
+    //    "14 injections, zero compliance" -- never again.
+    // ----------------------------------------------------------
+    const taskTurnThreshold = cfg.taskFreshnessTurns || 10;
+    const graceTurns = cfg.gracePeriodTurns || 5;
+
+    api.on("before_tool_call", async (event) => {
+      const tn = (event.toolName || "").toLowerCase();
+
+      // Only gate work tools -- let writes/edits through so model CAN comply
+      if (tn !== "exec" && tn !== "bash" && tn !== "message") return {};
+
+      // Grace period at session start
+      if (currentTurn <= graceTurns) return {};
+
+      // Check staleness by turn count
+      const turnsSinceUpdate = currentTurn - lastTasksWriteTurn;
+      if (turnsSinceUpdate <= taskTurnThreshold) return {};
+
+      // Double-check via file mtime (write may have happened outside plugin)
+      try {
+        const stat = statSync(TASKS_PATH);
+        if (Date.now() - stat.mtimeMs < 60000) return {};
+      } catch {}
+
+      log("BLOCKED task-freshness-gate: " + turnsSinceUpdate + " turns since TASKS.md update");
+      return {
+        block: true,
+        blockReason: `TASK GATE: TASKS.md hasn't been updated in ${turnsSinceUpdate} turns. Update your active task status BEFORE continuing work. Write to ${TASKS_PATH} now -- update Last HB timestamps, status, and what you're doing.`,
+      };
+    }, { priority: 65 });
+
+    // ----------------------------------------------------------
+    // 6. COMMUNICATION-GATE (before_tool_call, priority 55)
+    //    Blocks work tools if too many tool calls without a message.
+    //    Enforces "never go dark" mechanically -- not by suggestion.
+    // ----------------------------------------------------------
+    const commThreshold = cfg.commGateThreshold || 8;
+
+    api.on("before_tool_call", async (event) => {
+      const tn = (event.toolName || "").toLowerCase();
+
+      // Only gate exec/bash -- don't block writes, edits, or messages
+      if (tn !== "exec" && tn !== "bash") return {};
+
+      // Grace period
+      if (currentTurn <= graceTurns) return {};
+
+      if (toolCallsSinceMessage <= commThreshold) return {};
+
+      log("BLOCKED communication-gate: " + toolCallsSinceMessage + " tool calls without message");
+      return {
+        block: true,
+        blockReason: `COMMS GATE: You've made ${toolCallsSinceMessage} tool calls without sending a status update. Post a progress message to the active channel BEFORE continuing. Your user should NEVER wonder what's happening.`,
+      };
+    }, { priority: 55 });
+
+    // ----------------------------------------------------------
+    // 7. TASK-STALLED-ALERT (before_prompt_build, priority 60)
+    //    STALLED injection ONLY. Regular task reminders replaced by
+    //    the blocking gate above. Only fires for high-urgency STALLED.
     // ----------------------------------------------------------
     api.on("before_prompt_build", async () => {
       promptTurnCount++;
@@ -343,55 +416,31 @@ const plugin = {
       try {
         tasksContent = readFileSync(TASKS_PATH, "utf-8");
       } catch {
-        if (promptTurnCount % 3 === 0) {
-          return { appendSystemContext: "TASKS.md NOT FOUND. Create it immediately. Every task Rico gives you must be tracked." };
-        }
         return {};
       }
 
-      const hasStalled = tasksContent.includes("STALLED");
-      if (!hasStalled && promptTurnCount % 3 !== 0) return {};
+      if (!tasksContent.includes("STALLED")) return {};
 
-      // Extract active/pending/infrastructure sections
+      // Extract STALLED task sections only
       const lines = tasksContent.split("\n");
-      const active = [];
+      const stalled = [];
       let capturing = false;
       for (const line of lines) {
-        if (/^## .*Active|^## .*Pending|^## .*Infrastructure/.test(line)) { capturing = true; active.push(line); continue; }
-        if (/^## .*Completed|^## .*Template/.test(line)) { capturing = false; continue; }
-        if (capturing) active.push(line);
-      }
-      const activeContent = active.join("\n").trim();
-
-      if (!activeContent || activeContent.includes("_None right now")) {
-        if (promptTurnCount % 3 === 0) {
-          return { appendSystemContext: "TASKS.md: No active tasks. If Rico asked you to do something, ADD IT." + SOP_REMINDER };
+        if (/STALLED/.test(line)) { capturing = true; stalled.push(line); continue; }
+        if (capturing) {
+          stalled.push(line);
+          if (line.trim() === "" || /^### /.test(line)) capturing = false;
         }
-        return {};
       }
 
-      // Get scorecard for mode context
-      let score = "?", mode = "Standard";
-      try {
-        const sc = readFileSync(SCORECARD_PATH, "utf-8");
-        const m = sc.match(/Current Score:\s*(-?\d+)/);
-        if (m) {
-          score = m[1];
-          const n = parseInt(score, 10);
-          mode = n > 10 ? "Trusted" : n >= 0 ? "Standard" : n >= -5 ? "Warning" : "Probation";
-        }
-      } catch {}
-
-      const injection = hasStalled
-        ? `\nSTALLED TASK ALERT -- DROP EVERYTHING\n${activeContent}\n\nScore: ${score} (${mode})${SOP_REMINDER}`
-        : `\nACTIVE TASKS\n${activeContent}\n\nScore: ${score} (${mode})`;
-
-      log("INJECTED task-context (stalled=" + hasStalled + ", turn=" + promptTurnCount + ")");
-      return { appendSystemContext: injection };
-    }, { priority: 60 });
+      log("INJECTED task-stalled-alert");
+      return {
+        appendSystemContext: `\nSTALLED TASK ALERT -- DROP EVERYTHING\n${stalled.join("\n")}\n\nAddress this IMMEDIATELY. Update TASKS.md with current status.`,
+      };
+    }, { priority: 40 });
 
     // ----------------------------------------------------------
-    // 6. SENTIMENT-TRACKER (before_prompt_build, priority 50)
+    // 8. SENTIMENT-TRACKER (before_prompt_build, priority 50)
     //    Wagering System -- score user sentiment, update SCORECARD.md
     // ----------------------------------------------------------
     api.on("before_prompt_build", async (event) => {
@@ -442,14 +491,33 @@ const plugin = {
     }, { priority: 50 });
 
     // ----------------------------------------------------------
-    // 7. LAW-REINFORCEMENT (before_prompt_build, priority 40)
-    //    Rule re-injection every 5 turns to fight prompt degradation
+    // 9. HEARTBEAT-GATE (before_tool_call, priority 45)
+    //    Blocks work tools if heartbeat activities haven't happened
+    //    in the configured interval. Wall-clock enforcement.
+    //    law-reinforcement REMOVED: 9 injections/day, 0 compliance.
+    //    Specific rules now enforced by blocking gates above.
     // ----------------------------------------------------------
-    api.on("before_prompt_build", async () => {
-      if (promptTurnCount % 5 !== 0) return {};
-      log("INJECTED law-reinforcement (turn " + promptTurnCount + ")");
-      return { appendSystemContext: LAWS };
-    }, { priority: 40 });
+    const heartbeatMs = cfg.heartbeatIntervalMs || 10 * 60 * 1000;
+
+    api.on("before_tool_call", async (event) => {
+      const tn = (event.toolName || "").toLowerCase();
+
+      // Only gate work tools -- let writes through so model CAN update scorecard
+      if (tn !== "exec" && tn !== "bash" && tn !== "message") return {};
+
+      // Grace period
+      if (currentTurn <= graceTurns) return {};
+
+      const elapsed = Date.now() - lastScorecardWriteTime;
+      if (elapsed <= heartbeatMs) return {};
+
+      const mins = Math.round(elapsed / 60000);
+      log("BLOCKED heartbeat-gate: " + mins + " min since scorecard update");
+      return {
+        block: true,
+        blockReason: `HEARTBEAT GATE: No heartbeat activity in ${mins} minutes. Run your heartbeat NOW: 1) Read TASKS.md, 2) Update SCORECARD.md, 3) session_save to OB. Write to ${SCORECARD_PATH} to clear this gate.`,
+      };
+    }, { priority: 45 });
 
     // ----------------------------------------------------------
     // STATE RESET on new user message
@@ -457,9 +525,10 @@ const plugin = {
     api.on("message_received", async () => {
       obQueriedThisTurn = false;
       sopSearchedThisTurn = false;
+      currentTurn++;
     });
 
-    log("registered: 4 before_tool_call + 3 before_prompt_build + 1 message_received (7 Jeraptha hooks)");
+    log("registered: 8 before_tool_call (7 blocking + 1 tracker) + 2 before_prompt_build + 1 message_received (11 Jeraptha v2.1 hooks)");
   },
 };
 

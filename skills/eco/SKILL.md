@@ -1,8 +1,8 @@
 ---
-name: score
+name: eco
 description: Show behavioral scorecard from SCORECARD.md -- current score, enforcement mode, recent feedback, and failure patterns.
 triggers:
-  - /score
+  - /eco
   - show score
   - scorecard
   - behavioral score

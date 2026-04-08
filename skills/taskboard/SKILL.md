@@ -1,8 +1,8 @@
 ---
-name: tasks
+name: taskboard
 description: Show current task board from TASKS.md -- active, pending, stalled, and recently completed tasks across all channels.
 triggers:
-  - /tasks
+  - /taskboard
   - show tasks
   - what are you working on
   - task board
