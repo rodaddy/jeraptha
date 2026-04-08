@@ -6,6 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WORKSPACE="${OPENCLAW_WORKSPACE:-$HOME/.openclaw/workspace}"
 HOOKS_DIR="${OPENCLAW_HOOKS:-$HOME/.openclaw/hooks}"
+EXTENSIONS_DIR="${OPENCLAW_EXTENSIONS:-$HOME/.openclaw/extensions}"
 DRY_RUN=false
 
 # Parse args
@@ -37,22 +38,32 @@ log "  Workspace: $WORKSPACE"
 log "  Hooks: $HOOKS_DIR"
 echo ""
 
-# --- Hooks ---
-log "=== Installing Hooks ==="
-for hook_dir in "$SCRIPT_DIR"/hooks/*/; do
-  hook_name=$(basename "$hook_dir")
-  if [ ! -f "$hook_dir/handler.ts" ]; then
-    continue
-  fi
+# --- Plugin (replaces managed hooks -- see decisions/004) ---
+log "=== Installing PAI Hooks Plugin ==="
+log "  NOTE: Managed hooks (HOOK.md + handler.ts) do NOT work for before_tool_call"
+log "        or before_prompt_build events. They register in the wrong dispatch system."
+log "        The plugin uses api.on() which registers correctly."
+PLUGIN_DIR="$EXTENSIONS_DIR/pai-hooks"
+dry "mkdir -p '$PLUGIN_DIR'"
+dry "cp '$SCRIPT_DIR/plugin/openclaw.plugin.json' '$PLUGIN_DIR/'"
+dry "cp '$SCRIPT_DIR/plugin/index.js' '$PLUGIN_DIR/'"
+dry "cp '$SCRIPT_DIR/plugin/post-update-verify.sh' '$PLUGIN_DIR/'"
+log "  ✅ Plugin installed to $PLUGIN_DIR"
 
-  target="$HOOKS_DIR/$hook_name"
-  if [ -d "$target" ]; then
-    log "  ⚠️  Hook '$hook_name' already exists -- skipping (won't overwrite)"
-  else
-    log "  ✅ Installing hook: $hook_name"
-    dry "mkdir -p '$target'"
-    dry "cp '$hook_dir/HOOK.md' '$target/HOOK.md'"
-    dry "cp '$hook_dir/handler.ts' '$target/handler.ts'"
+# Enable the plugin
+if ! $DRY_RUN; then
+  openclaw plugins enable pai-hooks 2>/dev/null || true
+  openclaw config set plugins.entries.pai-hooks.config.debug true 2>/dev/null || true
+  log "  ✅ Plugin enabled"
+fi
+
+# Clean up dead managed hooks from previous installs
+log "  Cleaning dead managed hooks (legacy -- now handled by plugin)..."
+DEAD_HOOKS="law-reinforcement no-deaf-polls no-self-surgery ob-gate sentiment-tracker sop-gate task-context"
+for hook in $DEAD_HOOKS; do
+  if [ -d "$HOOKS_DIR/$hook" ]; then
+    log "    Removing dead managed hook: $hook"
+    dry "rm -rf '$HOOKS_DIR/$hook'"
   fi
 done
 echo ""
@@ -127,4 +138,5 @@ log "  1. Remove .template suffix from workspace files and customize them"
 log "  2. Review docs in $WORKSPACE/docs/oc-bootstrap/"
 log "  3. Apply config recommendations from config/defaults.md to openclaw.json"
 log "  4. Restart gateway: openclaw gateway restart"
-log "  5. Send a test message to verify hooks are firing"
+log "  5. Verify plugin: grep '[pai-hooks] registered' /tmp/openclaw/openclaw-\$(date +%Y-%m-%d).log"
+log "  6. Run post-update verify: $PLUGIN_DIR/post-update-verify.sh"

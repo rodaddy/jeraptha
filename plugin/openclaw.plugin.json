@@ -1,0 +1,14 @@
+{
+  "id": "pai-hooks",
+  "name": "PAI Enforcement Hooks",
+  "description": "Tool call guards, prompt injection, and behavioral enforcement for PAI/Skippy. Converts managed hooks to typed plugin hooks.",
+  "version": "1.0.0",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "enabled": { "type": "boolean", "default": true },
+      "debug": { "type": "boolean", "default": false }
+    }
+  }
+}
