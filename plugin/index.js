@@ -583,9 +583,9 @@ const plugin = {
     api.on("before_tool_call", async (event) => {
       const tn = (event.toolName || "").toLowerCase();
 
-      // Only gate work tools -- let writes through so model CAN update scorecard
-      if (tn !== "exec" && tn !== "bash" && tn !== "message") return {};
-      if ((tn === "exec" || tn === "bash") && isComplianceExec(event.params)) return {};
+      // Only gate exec/bash -- let messages through (communication is never blocked by heartbeat)
+      if (tn !== "exec" && tn !== "bash") return {};
+      if (isComplianceExec(event.params)) return {};
 
       // Grace period
       if (currentTurn <= graceTurns) return {};
