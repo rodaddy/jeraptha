@@ -2,7 +2,7 @@
 // Typed plugin hooks (api.on) -- the ONLY dispatch path that works for
 // before_tool_call and before_prompt_build events in OC v2026.4.x
 //
-// v2.2.0 -- 12 hooks (9 before_tool_call + 2 before_prompt_build + 1 message_received)
+// v2.3.0 -- 13 hooks (9 before_tool_call + 3 before_prompt_build + 1 message_received)
 //   before_tool_call:    state-tracker (p110), no-self-surgery (p100),
 //                        no-deaf-polls (p90), ob-gate (p80), sop-gate (p70),
 //                        task-freshness-gate (p65), conversation-freshness-gate (p62),
@@ -500,7 +500,28 @@ const plugin = {
     }, { priority: 40 });
 
     // ----------------------------------------------------------
-    // 8. SENTIMENT-TRACKER (before_prompt_build, priority 50)
+    // 8a. SKILL-INDEX-REMINDER (before_prompt_build, priority 35)
+    //     Light reminder of available skills every 10 turns.
+    //     NOT enforcement -- just awareness. "You have tools, use them."
+    // ----------------------------------------------------------
+    const SKILL_INDEX_PATH = join(WORKSPACE, "SKILL-INDEX.md");
+
+    api.on("before_prompt_build", async () => {
+      if (promptTurnCount % 10 !== 0) return {};
+
+      try {
+        const index = readFileSync(SKILL_INDEX_PATH, "utf-8");
+        log("INJECTED skill-index-reminder (turn " + promptTurnCount + ")");
+        return {
+          appendSystemContext: `\nAVAILABLE SKILLS (check before doing anything manually):\n${index}\n\nRead the full SKILL.md before using. Do NOT guess at usage -- the skill has instructions.`,
+        };
+      } catch {
+        return {};
+      }
+    }, { priority: 35 });
+
+    // ----------------------------------------------------------
+    // 9. SENTIMENT-TRACKER (before_prompt_build, priority 50)
     //    Wagering System -- score user sentiment, update SCORECARD.md
     // ----------------------------------------------------------
     api.on("before_prompt_build", async (event) => {
@@ -590,7 +611,7 @@ const plugin = {
       currentTurn++;
     });
 
-    log("registered: 9 before_tool_call (8 blocking + 1 tracker) + 2 before_prompt_build + 1 message_received (12 Jeraptha v2.2 hooks)");
+    log("registered: 9 before_tool_call (8 blocking + 1 tracker) + 3 before_prompt_build + 1 message_received (13 Jeraptha v2.3 hooks)");
   },
 };
 
