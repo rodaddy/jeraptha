@@ -271,15 +271,23 @@ const plugin = {
     // ----------------------------------------------------------
     // 3. OB-GATE (before_tool_call, priority 80)
     //    Intel First -- HARD BLOCK factual questions without OB search
-    //    Per Jeraptha design: hard blocks, not soft approvals
+    //    Also blocks known-bad OB queries (wildcard *, empty, etc.)
     // ----------------------------------------------------------
     api.on("before_tool_call", async (event) => {
       const tn = (event.toolName || "").toLowerCase();
 
-      // Track OB searches
+      // Track OB searches + block bad queries
       if (tn === "exec" || tn === "bash") {
         const cmd = JSON.stringify(event.params || {});
         if (cmd.includes("open-brain")) {
+          // Block known-bad OB queries before they waste a call
+          if (/["']query["']\s*:\s*["']\*["']/.test(cmd) || /["']query["']\s*:\s*["']\s*["']/.test(cmd)) {
+            log("BLOCKED ob-gate: bad OB query (wildcard or empty)");
+            return {
+              block: true,
+              blockReason: 'OB GATE: Do NOT use "*" or empty queries with OB. Wildcard does vector similarity on the literal asterisk -- it returns random garbage, not all entries. Use a real natural language query like "jeraptha hooks" or "king capital deploy". Use search_all (not search_brain) for broad searches. Use tags for filtering.',
+            };
+          }
           obQueriedThisTurn = true;
           return {};
         }
