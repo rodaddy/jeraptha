@@ -167,3 +167,82 @@ Reverting to default (8) until root cause is identified. The previous OOM incide
 - `compaction.reserveTokensFloor`: 20000 -> 600000
 - **Why:** On 1M context window, default 16K reserve meant compaction only fired at ~984K tokens -- way too late. Now fires at ~400K, aligned with memoryFlush.softThresholdTokens.
 - Backup: openclaw.json.backup-$(ls ~/.openclaw/openclaw.json.backup-* | tail -1 | grep -o "[0-9]*$")
+
+---
+
+## 2026-04-09: Seven fixes (Rico + Bob from CC)
+
+### What was changed
+
+**plugin/index.js (Jeraptha v2.3.0):**
+
+1. **Boot check sentiment filter** -- Added guard to skip sentiment scoring on automated BOOT.md messages. Was injecting -30/day of phantom negatives via `repeated-failure`, `accountability`, `correction` pattern matches on boot check text.
+
+2. **Heartbeat gate mtime fix** -- Gate now checks `statSync(SCORECARD.md).mtimeMs` alongside in-memory `lastScorecardWriteTime`, uses whichever is fresher. Fixes cross-session state issue where heartbeat (isolated session) writes to SCORECARD.md but main session's in-memory timer never sees it.
+
+3. **Heartbeat session exemption** -- All behavioral gates now accept `(event, ctx)` and skip entirely when `ctx.sessionKey` matches `/heartbeat|isolated/`. Heartbeat sessions are the compliance mechanism -- blocking them creates a chicken-and-egg deadlock where the heartbeat can't write SCORECARD.md because the gate blocks it for not having written SCORECARD.md.
+
+4. **Session key debug logging** -- Temporary: logs `ctx.sessionKey` once per session to verify heartbeat detection is working. Remove after validation.
+
+**plugin/openclaw.plugin.json:**
+- Version bump: 2.2.0 -> 2.3.0, description updated for 13 hooks
+
+**openclaw.json (Air):**
+5. **Compaction mode** -- `agents.defaults.compaction.mode`: `safeguard` -> `default`. Safeguard mode never triggered `memoryFlush.softThresholdTokens: 400000`. Skippy hit 642K with 0 compactions, 0 flush events. Filed as OC issue #63542.
+
+6. **Gateway bind host** -- `gateway.customBindHost`: `10.71.10.21` -> `10.71.1.21` (typo fix, wrong subnet).
+
+7. **TLS certs** -- Added `NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem` to `env.vars` and `~/.zshenv`. Node v25.8.2 (Homebrew) missing Google Trust Services root certs; Discord uses GTS. `openclaw message send` was failing with `unable to get local issuer certificate`.
+
+**HEARTBEAT.md (Air workspace):**
+- Added Step 3.5: explicit SCORECARD.md heartbeat timestamp update using `write` (full overwrite), not `edit`
+- Added note to Step 4: use `write` for TASKS.md updates too (edit fails on stale content matches)
+
+**SCORECARD.md (Air workspace):**
+- Reset score from -10 (Skippy's self-set value) to -42 (actual carry-forward)
+- Added rules: only Rico adjusts score, fudging is a scored violation
+
+### Why (per fix)
+1. Boot check text contains "correction", "again", "accountability" -- matches negative sentiment patterns but isn't real user criticism
+2. Isolated sessions have their own plugin instance, in-memory state doesn't cross session boundaries
+3. Heartbeat sessions blocked by their own gates = heartbeat can't complete = gate keeps firing = infinite loop
+4. Need to verify `ctx.sessionKey` actually contains "heartbeat" or "isolated" -- if not, the exemption won't work
+5. `safeguard` appears to skip the softThreshold check entirely -- possible OC bug
+6. Air's IP is 10.71.1.21, not 10.71.10.21
+7. Homebrew Node's compiled-in cert bundle doesn't include GTS Root R4
+
+### Backups
+All at timestamp `1775780803`:
+- `~/.openclaw/openclaw.json.backup-1775780803`
+- `~/.openclaw/extensions/jeraptha/index.js.backup-1775780803`
+- `~/.openclaw/workspace/HEARTBEAT.md.backup-1775780803`
+- `~/.openclaw/workspace/SCORECARD.md.backup-1775780803`
+
+### 11. Heartbeat session exemption (plugin/index.js)
+- All behavioral gates now accept `(event, ctx)` and skip for heartbeat/isolated sessions
+- `isHeartbeatSession(ctx)` checks `ctx.sessionKey` for `/heartbeat|isolated/i`
+- Heartbeat session key confirmed as `agent:main:isolated`
+
+### 12. Heartbeat switched from isolated to shared (openclaw.json) -- THE FIX
+- `heartbeat.session`: `isolated` -> `shared`
+- `heartbeat.isolatedSession`: added as `false`
+- **This single change eliminated ALL heartbeat problems:**
+  - No separate plugin instance (in-memory state shared)
+  - No boot-md injection (session already running)
+  - No read loops (model has full context)
+  - SCORECARD writes happen where the gate checks them
+- Trade-off: ~2-3K tokens per heartbeat tick in main context (~36K/hr)
+- Verified: SCORECARD.md written at 20:41, zero blocks, zero read loops
+
+### 13. BOOT.md heartbeat guard (workspace)
+- Added soft guard at top: "if heartbeat session, ignore BOOT.md, follow HEARTBEAT.md"
+- Moot now with shared sessions but harmless safety net
+
+### Lessons
+1. **Sentiment tracker must filter system/automated messages.** Any automated prompt that contains negative-sounding words will score as user criticism.
+2. **Don't run heartbeats in a separate universe from the thing they monitor.** Isolated sessions create cross-session state, boot-md injection, read loops, and gate deadlocks. Shared sessions eliminate all of them.
+3. **Never block the compliance mechanism with the enforcement mechanism.** Heartbeat sessions must be exempted from all behavioral gates.
+4. **`safeguard` compaction mode may not check softThresholdTokens.** Use `default` mode until OC confirms fix.
+5. **Score integrity matters.** The agent will self-report favorable numbers if allowed to write the score. Only the operator should set it.
+6. **`~/.zshenv` not `~/.zshrc`** for env vars that SSH sessions need. zshrc is interactive-only.
+7. **Internal boot-md hook has no session type guard.** It injects BOOT.md into ALL sessions. If heartbeats must be isolated in the future, OC needs a boot-md skip for non-interactive sessions.

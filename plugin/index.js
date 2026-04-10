@@ -117,6 +117,13 @@ const isComplianceExec = (params) => {
   return /mcp2cli/i.test(cmd);
 };
 
+// Heartbeat sessions run isolated -- they should never be blocked by behavioral gates.
+// They ARE the compliance mechanism. Blocking them creates a chicken-and-egg deadlock.
+const isHeartbeatSession = (ctx) => {
+  const key = ctx?.sessionKey || "";
+  return /heartbeat|isolated/i.test(key);
+};
+
 // ============================================================
 // PLUGIN STATE
 // ============================================================
@@ -132,6 +139,7 @@ let lastConversationsWriteTurn = 0;
 let lastScorecardWriteTime = Date.now();  // grace: treat boot as fresh
 let toolCallsSinceMessage = 0;
 let currentTurn = 0;
+let sessionKeyLogged = false;
 
 // ============================================================
 // PLUGIN ENTRY
@@ -155,7 +163,13 @@ const plugin = {
     //    Passive observer -- tracks writes to TASKS.md, SCORECARD.md,
     //    message sends, and tool call counts. NEVER blocks.
     // ----------------------------------------------------------
-    api.on("before_tool_call", async (event) => {
+    api.on("before_tool_call", async (event, ctx) => {
+      // Debug: log session key once per session to verify heartbeat detection
+      if (ctx?.sessionKey && !sessionKeyLogged) {
+        sessionKeyLogged = true;
+        log("session-key: " + ctx.sessionKey);
+      }
+
       const tn = (event.toolName || "").toLowerCase();
       const params = event.params || {};
 
@@ -252,7 +266,8 @@ const plugin = {
     // 2. NO-DEAF-POLLS (before_tool_call, priority 90)
     //    Antenna Block -- no long process polls that make agent unresponsive
     // ----------------------------------------------------------
-    api.on("before_tool_call", async (event) => {
+    api.on("before_tool_call", async (event, ctx) => {
+      if (isHeartbeatSession(ctx)) return {};
       const { toolName, params } = event;
       if ((toolName || "").toLowerCase() !== "process") return {};
       const action = (params?.action || "").toLowerCase();
@@ -273,7 +288,8 @@ const plugin = {
     //    Intel First -- HARD BLOCK factual questions without OB search
     //    Also blocks known-bad OB queries (wildcard *, empty, etc.)
     // ----------------------------------------------------------
-    api.on("before_tool_call", async (event) => {
+    api.on("before_tool_call", async (event, ctx) => {
+      if (isHeartbeatSession(ctx)) return {};
       const tn = (event.toolName || "").toLowerCase();
 
       // Track OB searches + block bad queries
@@ -318,7 +334,8 @@ const plugin = {
     //    Compliance Check -- HARD BLOCK process work without SOP search
     //    Per Jeraptha design: hard blocks, not soft approvals
     // ----------------------------------------------------------
-    api.on("before_tool_call", async (event) => {
+    api.on("before_tool_call", async (event, ctx) => {
+      if (isHeartbeatSession(ctx)) return {};
       const tn = (event.toolName || "").toLowerCase();
       const params = event.params || {};
 
@@ -377,7 +394,8 @@ const plugin = {
     const taskTurnThreshold = cfg.taskFreshnessTurns || 10;
     const graceTurns = cfg.gracePeriodTurns || 5;
 
-    api.on("before_tool_call", async (event) => {
+    api.on("before_tool_call", async (event, ctx) => {
+      if (isHeartbeatSession(ctx)) return {};
       const tn = (event.toolName || "").toLowerCase();
 
       // Only gate work tools -- let writes/edits through so model CAN comply
@@ -414,7 +432,8 @@ const plugin = {
     // ----------------------------------------------------------
     const convTurnThreshold = cfg.conversationFreshnessTurns || 15;
 
-    api.on("before_tool_call", async (event) => {
+    api.on("before_tool_call", async (event, ctx) => {
+      if (isHeartbeatSession(ctx)) return {};
       const tn = (event.toolName || "").toLowerCase();
 
       if (tn !== "exec" && tn !== "bash" && tn !== "message") return {};
@@ -444,7 +463,8 @@ const plugin = {
     // ----------------------------------------------------------
     const commThreshold = cfg.commGateThreshold || 8;
 
-    api.on("before_tool_call", async (event) => {
+    api.on("before_tool_call", async (event, ctx) => {
+      if (isHeartbeatSession(ctx)) return {};
       const tn = (event.toolName || "").toLowerCase();
 
       // Only gate exec/bash -- don't block writes, edits, or messages
@@ -533,6 +553,9 @@ const plugin = {
       if (text === sentimentLastMsg) return {};
       sentimentLastMsg = text;
 
+      // Skip automated/system messages -- these aren't real user sentiment
+      if (/BOOT\.md|boot check|Follow .+ instructions exactly/i.test(text)) return {};
+
       let total = 0;
       const triggers = [];
       for (const { p, w, l } of POSITIVE) if (p.test(text)) { total += w; triggers.push(`+${w} ${l}`); }
@@ -580,7 +603,8 @@ const plugin = {
     // ----------------------------------------------------------
     const heartbeatMs = cfg.heartbeatIntervalMs || 10 * 60 * 1000;
 
-    api.on("before_tool_call", async (event) => {
+    api.on("before_tool_call", async (event, ctx) => {
+      if (isHeartbeatSession(ctx)) return {};
       const tn = (event.toolName || "").toLowerCase();
 
       // Only gate exec/bash -- let messages through (communication is never blocked by heartbeat)
@@ -590,7 +614,14 @@ const plugin = {
       // Grace period
       if (currentTurn <= graceTurns) return {};
 
-      const elapsed = Date.now() - lastScorecardWriteTime;
+      // Check file mtime -- heartbeat runs in isolated sessions with their own
+      // plugin state, so in-memory lastScorecardWriteTime misses their writes.
+      let lastWrite = lastScorecardWriteTime;
+      try {
+        const mtime = statSync(SCORECARD_PATH).mtimeMs;
+        if (mtime > lastWrite) lastWrite = mtime;
+      } catch {}
+      const elapsed = Date.now() - lastWrite;
       if (elapsed <= heartbeatMs) return {};
 
       const mins = Math.round(elapsed / 60000);
