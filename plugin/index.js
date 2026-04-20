@@ -392,8 +392,8 @@ const plugin = {
       }
 
       // Search-before-read: block grep/find on project files without OB search
-      if ((tn === "exec" || tn === "bash") && !isComplianceExec(params) && !obQueriedThisTurn) {
-        const cmd = params?.command || params?.cmd || "";
+      if ((tn === "exec" || tn === "bash") && !isComplianceExec(event.params) && !obQueriedThisTurn) {
+        const cmd = event.params?.command || event.params?.cmd || "";
         if (/\b(grep|rg|find|fd)\b/i.test(cmd) && !/TASKS\.md|SCORECARD|CONVERSATIONS|HEARTBEAT|SKILL|\.openclaw/i.test(cmd)) {
           log("BLOCKED ob-gate (search-before-read): " + cmd.substring(0, 80));
           return { block: true, blockReason: "OB GATE: Searching project files without checking Open Brain first. Run: mcp2cli open-brain search_all --params '{\"query\": \"what you need\"}' BEFORE grepping." };
