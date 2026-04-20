@@ -2,9 +2,10 @@
 // Typed plugin hooks (api.on) -- the ONLY dispatch path that works for
 // before_tool_call and before_prompt_build events in OC v2026.4.x
 //
-// v2.3.0 -- 13 hooks (9 before_tool_call + 3 before_prompt_build + 1 message_received)
+// v2.4.0 -- 15 hooks (11 before_tool_call + 3 before_prompt_build + 1 message_received)
 //   before_tool_call:    state-tracker (p110), no-self-surgery (p100),
-//                        no-deaf-polls (p90), ob-gate (p80), sop-gate (p70),
+//                        no-destructive-git (p95), no-deaf-polls (p90),
+//                        ob-gate (p80), sop-gate (p70), skill-gate (p68),
 //                        task-freshness-gate (p65), conversation-freshness-gate (p62),
 //                        communication-gate (p55), heartbeat-gate (p45)
 //   before_prompt_build: sentiment-tracker (p50), task-stalled-alert (p40)
@@ -30,17 +31,27 @@ const CONVERSATIONS_PATH = join(WORKSPACE, "CONVERSATIONS.md");
 const HARD_BLOCKED_PATHS = [/openclaw\.json/i];
 
 const APPROVAL_EXEC = [
-  /openclaw\s+(gateway|config|plugins|channels)/i,
-  /launchctl\s+(unload|load|bootout|bootstrap|stop|start|kill)/i,
-  /systemctl\s+(restart|stop|enable|disable).*openclaw/i,
-  /kill\s+(-\d+\s+)?(\$\(pgrep|.*openclaw)/i,
-  /rm\s+.*\.openclaw/i,
   /gateway\s+(restart|stop|start)/i,
 ];
 
 const APPROVAL_PATHS = [
-  /HEARTBEAT\.md/i, /AGENTS\.md/i, /SOUL\.md/i, /IDENTITY\.md/i,
-  /TOOLS\.md/i, /BOOT\.md/i, /\.openclaw\/hooks\//i,
+  /\.openclaw\/hooks\//i,
+];
+
+// ============================================================
+// NO-DESTRUCTIVE-GIT constants
+// ============================================================
+
+const DESTRUCTIVE_GIT = [
+  /\bgit\s+reset\b/i,
+  /\bgit\s+clean\s+.*-[a-zA-Z]*f/i,
+  /\bgit\s+checkout\s+\.\s*/i,
+  /\bgit\s+restore\s+\.\s*/i,
+  /\bgit\s+branch\s+.*-[a-zA-Z]*D/i,
+  /\bgit\s+push\s+.*--force/i,
+  /\bgit\s+push\s+.*\s-f(?:\s|$)/i,
+  /\bgit\s+stash\s+drop/i,
+  /\bgit\s+stash\s+clear/i,
 ];
 
 // ============================================================
@@ -140,6 +151,7 @@ let lastScorecardWriteTime = Date.now();  // grace: treat boot as fresh
 let toolCallsSinceMessage = 0;
 let currentTurn = 0;
 let sessionKeyLogged = false;
+let skillConsultedThisTurn = false;
 
 // ============================================================
 // PLUGIN ENTRY
@@ -200,6 +212,12 @@ const plugin = {
         toolCallsSinceMessage++;
       }
 
+      // Track skill consultations (reading SKILL files)
+      if (((tn === "exec" || tn === "bash") && /\bcat\b.*SKILL/i.test(params?.command || params?.cmd || "")) ||
+          (tn === "read" && /SKILL/i.test(params?.path || ""))) {
+        skillConsultedThisTurn = true;
+      }
+
       return {};
     }, { priority: 110 });
 
@@ -211,12 +229,25 @@ const plugin = {
       const { toolName, params } = event;
       const tn = (toolName || "").toLowerCase();
 
-      // HARD BLOCK: openclaw.json -- NEVER modifiable
+      // HARD BLOCK: openclaw.json -- no self-surgery (reads OK)
+      // Exceptions: SSH (cross-agent fix), oc-channel (scoped channel management)
       if (tn === "exec" || tn === "bash") {
         const cmd = params?.command || params?.cmd || "";
         if (HARD_BLOCKED_PATHS.some((p) => p.test(cmd))) {
-          log("BLOCKED no-self-surgery (hard): " + cmd.substring(0, 60));
-          return { block: true, blockReason: "CARAPACE LOCK: Cannot modify openclaw.json. EVER. Tell Rico if something is wrong." };
+          const WRITE_INTENTS = /\b(sed|awk|tee|mv|cp|rm|echo\s.*>|cat\s.*>|printf\s.*>|>\s*[~\/]|python.*open.*['"](w|a)|node.*write|jq\s.*>|perl\s+-.*p?i)\b|>\s*.*openclaw\.json/i;
+          if (WRITE_INTENTS.test(cmd)) {
+            if (/\bssh\s+/i.test(cmd)) {
+              log("ALLOWED no-self-surgery (cross-agent SSH): " + cmd.substring(0, 80));
+              return {};
+            }
+            if (/\boc-channel\b/i.test(cmd)) {
+              log("ALLOWED no-self-surgery (oc-channel): " + cmd.substring(0, 80));
+              return {};
+            }
+            log("BLOCKED no-self-surgery (hard): " + cmd.substring(0, 60));
+            return { block: true, blockReason: "CARAPACE LOCK: Cannot modify own openclaw.json. Use oc-channel for channel management, or SSH for cross-agent fixes." };
+          }
+          log("ALLOWED no-self-surgery (read): " + cmd.substring(0, 60));
         }
       }
       if ((tn === "write" || tn === "edit" || tn === "apply_patch") && params?.path) {
@@ -261,6 +292,40 @@ const plugin = {
 
       return {};
     }, { priority: 100 });
+
+    // ----------------------------------------------------------
+    // 1b. NO-DESTRUCTIVE-GIT (before_tool_call, priority 95)
+    //     Hard block destructive git commands -- no exceptions.
+    //     User must run these manually. Fail CLOSED.
+    // ----------------------------------------------------------
+    api.on("before_tool_call", async (event, ctx) => {
+      if (isHeartbeatSession(ctx)) return {};
+      const tn = (event.toolName || "").toLowerCase();
+      if (tn !== "exec" && tn !== "bash") return {};
+
+      const cmd = event.params?.command || event.params?.cmd || "";
+      if (DESTRUCTIVE_GIT.some((p) => p.test(cmd))) {
+        log("BLOCKED no-destructive-git: " + cmd.substring(0, 80));
+        return {
+          block: true,
+          blockReason: `DESTRUCTIVE GIT BLOCK: "${cmd.substring(0, 80)}" can NEVER be run by an agent. This is a hard block with no override. Copy the command and run it yourself if needed.`,
+        };
+      }
+
+      // cd+git chains break permission matching -- use git -C instead
+      if (/\bcd\s+\S+\s*(&&|;)\s*git\b/i.test(cmd)) {
+        log("BLOCKED chain-command: " + cmd.substring(0, 80));
+        return { block: true, blockReason: 'CHAIN BLOCK: Do not chain cd with git. Use "git -C /path command" or separate exec calls.' };
+      }
+
+      // Heredocs writing to files corrupt config -- use Write/Edit tools
+      if (/<<-?\s*'?[A-Z_]+'?/.test(cmd) && /(?:cat\s*>|tee\s+\S|>>)/.test(cmd) && !/git\s+commit\s+-m\s+"\$\(cat\s+<</.test(cmd)) {
+        log("BLOCKED heredoc-write: " + cmd.substring(0, 80));
+        return { block: true, blockReason: 'HEREDOC BLOCK: Heredocs that write to files are blocked -- they corrupt configs. Use Write/Edit tools.' };
+      }
+
+      return {};
+    }, { priority: 95 });
 
     // ----------------------------------------------------------
     // 2. NO-DEAF-POLLS (before_tool_call, priority 90)
@@ -326,6 +391,15 @@ const plugin = {
         }
       }
 
+      // Search-before-read: block grep/find on project files without OB search
+      if ((tn === "exec" || tn === "bash") && !isComplianceExec(params) && !obQueriedThisTurn) {
+        const cmd = params?.command || params?.cmd || "";
+        if (/\b(grep|rg|find|fd)\b/i.test(cmd) && !/TASKS\.md|SCORECARD|CONVERSATIONS|HEARTBEAT|SKILL|\.openclaw/i.test(cmd)) {
+          log("BLOCKED ob-gate (search-before-read): " + cmd.substring(0, 80));
+          return { block: true, blockReason: "OB GATE: Searching project files without checking Open Brain first. Run: mcp2cli open-brain search_all --params '{\"query\": \"what you need\"}' BEFORE grepping." };
+        }
+      }
+
       return {};
     }, { priority: 80 });
 
@@ -384,6 +458,23 @@ const plugin = {
 
       return {};
     }, { priority: 70 });
+
+    // ----------------------------------------------------------
+    // 4b. SKILL-GATE (before_tool_call, priority 68)
+    //     Block high-risk ops without consulting skills first.
+    // ----------------------------------------------------------
+    api.on("before_tool_call", async (event, ctx) => {
+      if (isHeartbeatSession(ctx)) return {};
+      const tn = (event.toolName || "").toLowerCase();
+      if (tn !== "exec" && tn !== "bash") return {};
+      if (isComplianceExec(event.params) || currentTurn <= (cfg.gracePeriodTurns || 5) || skillConsultedThisTurn) return {};
+      const cmd = event.params?.command || event.params?.cmd || "";
+      const ops = [[/\b(deploy|scp\s|rsync\s)/i, "deploy"], [/\b(docker|container|lxc|pct\s)/i, "infrastructure"], [/\bswarm\b/i, "code-swarm"], [/\b(n8n|workflow)/i, "n8n"]];
+      const match = ops.find(([p]) => p.test(cmd));
+      if (!match) return {};
+      log("BLOCKED skill-gate: " + match[1]);
+      return { block: true, blockReason: `SKILL GATE: About to do ${match[1]} work without consulting skills. Read SKILL-INDEX.md, then the relevant SKILL.md. Skills have workflow knowledge you'll miss.` };
+    }, { priority: 68 });
 
     // ----------------------------------------------------------
     // 5. TASK-FRESHNESS-GATE (before_tool_call, priority 65)
@@ -555,6 +646,14 @@ const plugin = {
 
       // Skip automated/system messages -- these aren't real user sentiment
       if (/BOOT\.md|boot check|Follow .+ instructions exactly/i.test(text)) return {};
+      // Skip JSON blobs (tool output reflected as user role)
+      if (/^\s*[\[{]/.test(text) && text.length > 50) return {};
+      // Skip system-injected context (XML tags, markdown headers, long structured content)
+      if (/^<(system|context|instructions|reminder|tool)/i.test(text.trim())) return {};
+      // Skip very short messages (emoji-only handled by patterns, but skip empty/whitespace)
+      if (text.trim().length < 3) return {};
+      // Skip messages that are mostly non-conversational (e.g. file contents, code dumps)
+      if (text.length > 500) return {};
 
       let total = 0;
       const triggers = [];
@@ -582,7 +681,7 @@ const plugin = {
             sc = sc.replace(/Current Score:\s*-?\d+/, `Current Score: ${newScore}`);
           }
           writeFileSync(SCORECARD_PATH, sc, "utf-8");
-          log("sentiment: " + sentiment + " (" + total + ")");
+          log("sentiment: " + sentiment + " (" + total + ") | " + JSON.stringify(text.slice(0, 120)));
         }
       } catch {}
 
@@ -639,10 +738,11 @@ const plugin = {
     api.on("message_received", async () => {
       obQueriedThisTurn = false;
       sopSearchedThisTurn = false;
+      skillConsultedThisTurn = false;
       currentTurn++;
     });
 
-    log("registered: 9 before_tool_call (8 blocking + 1 tracker) + 3 before_prompt_build + 1 message_received (13 Jeraptha v2.3 hooks)");
+    log("registered: 11 before_tool_call (10 blocking + 1 tracker) + 3 before_prompt_build + 1 message_received (15 Jeraptha v2.4 hooks)");
   },
 };
 

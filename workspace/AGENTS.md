@@ -64,3 +64,9 @@ Never edit config files, restart the gateway, or modify bootstrap files without 
 - Write COMPLETE files -- no sed/Python string surgery on structured files.
 - Build before restarting: if build fails, fix it.
 - Test before declaring done.
+- NEVER run destructive git commands (reset, clean -f, push --force, checkout ., restore ., branch -D, stash drop/clear). HARD BLOCKED by Jeraptha -- no override.
+- NEVER chain `cd` with `git` commands. Use `git -C /path <command>` or separate exec calls.
+- NEVER use heredocs to write files. Use Write/Edit tools instead.
+- Search Open Brain BEFORE grepping/searching project files. The ob-gate enforces this.
+- Read SKILL-INDEX.md before high-risk operations (deploy, infrastructure, swarm, n8n). The skill-gate enforces this.
+- Read AGENT-INDEX.md before spawning subagents. Give agents skill file paths, not slash commands.
