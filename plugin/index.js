@@ -2,12 +2,13 @@
 // Typed plugin hooks (api.on) -- the ONLY dispatch path that works for
 // before_tool_call and before_prompt_build events in OC v2026.4.x
 //
-// v2.4.0 -- 15 hooks (11 before_tool_call + 3 before_prompt_build + 1 message_received)
+// v2.5.0 -- 16 hooks (12 before_tool_call + 3 before_prompt_build + 1 message_received)
 //   before_tool_call:    state-tracker (p110), no-self-surgery (p100),
 //                        no-destructive-git (p95), no-deaf-polls (p90),
 //                        ob-gate (p80), sop-gate (p70), skill-gate (p68),
 //                        task-freshness-gate (p65), conversation-freshness-gate (p62),
-//                        communication-gate (p55), heartbeat-gate (p45)
+//                        context-before-message (p58), communication-gate (p55),
+//                        heartbeat-gate (p45)
 //   before_prompt_build: sentiment-tracker (p50), task-stalled-alert (p40)
 //   message_received:    state reset + turn counter
 //
@@ -114,9 +115,7 @@ const NEGATIVE = [
   { p: /😤|😡|🤦|💀|👎/u, w: -2, l: "negative-emoji" },
 ];
 
-// LAW-REINFORCEMENT content removed in v2.1 -- 9 injections/day, 0 compliance.
-// Specific rules now enforced mechanically by blocking gates.
-// SOP_REMINDER removed -- sop-gate already blocks without SOP check.
+// LAW-REINFORCEMENT + SOP_REMINDER removed in v2.1 -- replaced by blocking gates.
 
 // ============================================================
 // HELPERS
@@ -150,8 +149,10 @@ let lastConversationsWriteTurn = 0;
 let lastScorecardWriteTime = Date.now();  // grace: treat boot as fresh
 let toolCallsSinceMessage = 0;
 let currentTurn = 0;
-let sessionKeyLogged = false;
 let skillConsultedThisTurn = false;
+let tasksReadThisSession = false;
+let conversationsReadThisSession = false;
+let obContextLoadedThisSession = false;
 
 // ============================================================
 // PLUGIN ENTRY
@@ -176,12 +177,6 @@ const plugin = {
     //    message sends, and tool call counts. NEVER blocks.
     // ----------------------------------------------------------
     api.on("before_tool_call", async (event, ctx) => {
-      // Debug: log session key once per session to verify heartbeat detection
-      if (ctx?.sessionKey && !sessionKeyLogged) {
-        sessionKeyLogged = true;
-        log("session-key: " + ctx.sessionKey);
-      }
-
       const tn = (event.toolName || "").toLowerCase();
       const params = event.params || {};
 
@@ -189,6 +184,7 @@ const plugin = {
       if ((tn === "write" || tn === "edit" || tn === "apply_patch") && params.path) {
         if (/TASKS\.md/i.test(params.path)) {
           lastTasksWriteTurn = currentTurn;
+          tasksReadThisSession = true;
           log("state-tracker: TASKS.md write (turn " + currentTurn + ")");
         }
         if (/SCORECARD\.md/i.test(params.path)) {
@@ -197,6 +193,7 @@ const plugin = {
         }
         if (/CONVERSATIONS\.md/i.test(params.path)) {
           lastConversationsWriteTurn = currentTurn;
+          conversationsReadThisSession = true;
           log("state-tracker: CONVERSATIONS.md write (turn " + currentTurn + ")");
         }
       }
@@ -217,6 +214,12 @@ const plugin = {
           (tn === "read" && /SKILL/i.test(params?.path || ""))) {
         skillConsultedThisTurn = true;
       }
+
+      // Track context loads for context-before-message gate (per-session, not per-turn)
+      const rcmd = params?.command || params?.cmd || "";
+      if ((tn === "read" && /TASKS\.md/i.test(params?.path)) || /cat.*TASKS\.md/i.test(rcmd)) tasksReadThisSession = true;
+      if ((tn === "read" && /CONVERSATIONS\.md/i.test(params?.path)) || /cat.*CONVERSATIONS\.md/i.test(rcmd)) conversationsReadThisSession = true;
+      if (/open-brain.*(session_load|search_brain|search_all)/i.test(rcmd)) obContextLoadedThisSession = true;
 
       return {};
     }, { priority: 110 });
@@ -478,9 +481,6 @@ const plugin = {
 
     // ----------------------------------------------------------
     // 5. TASK-FRESHNESS-GATE (before_tool_call, priority 65)
-    //    Blocks work tools if TASKS.md hasn't been updated recently.
-    //    Replaces the toothless task-context prompt injection.
-    //    "14 injections, zero compliance" -- never again.
     // ----------------------------------------------------------
     const taskTurnThreshold = cfg.taskFreshnessTurns || 10;
     const graceTurns = cfg.gracePeriodTurns || 5;
@@ -518,8 +518,6 @@ const plugin = {
 
     // ----------------------------------------------------------
     // 6. CONVERSATION-FRESHNESS-GATE (before_tool_call, priority 62)
-    //    Blocks work tools if CONVERSATIONS.md hasn't been updated.
-    //    Same pattern as task-freshness -- if it doesn't block, he ignores it.
     // ----------------------------------------------------------
     const convTurnThreshold = cfg.conversationFreshnessTurns || 15;
 
@@ -548,9 +546,22 @@ const plugin = {
     }, { priority: 62 });
 
     // ----------------------------------------------------------
+    // 6b. CONTEXT-BEFORE-MESSAGE (before_tool_call, priority 58)
+    //     No more half-cocked replies. Load context before speaking.
+    // ----------------------------------------------------------
+    api.on("before_tool_call", async (event, ctx) => {
+      if (isHeartbeatSession(ctx)) return {};
+      const tn = (event.toolName || "").toLowerCase();
+      if (tn !== "message" || currentTurn <= (cfg.gracePeriodTurns || 5)) return {};
+      if (toolCallsSinceMessage > (cfg.commGateThreshold || 8)) return {};
+      if (tasksReadThisSession && conversationsReadThisSession && obContextLoadedThisSession) return {};
+      const missing = [!tasksReadThisSession && "TASKS.md", !conversationsReadThisSession && "CONVERSATIONS.md", !obContextLoadedThisSession && "OB context"].filter(Boolean);
+      log("BLOCKED context-gate: missing " + missing.join(", "));
+      return { block: true, blockReason: `CONTEXT GATE: Load context before responding. Missing: ${missing.join(", ")}. Read TASKS.md + CONVERSATIONS.md + run mcp2cli open-brain session_load --params '{"project":"skippy-main"}' BEFORE sending messages. You keep saying dumb stuff without context.` };
+    }, { priority: 58 });
+
+    // ----------------------------------------------------------
     // 7. COMMUNICATION-GATE (before_tool_call, priority 55)
-    //    Blocks work tools if too many tool calls without a message.
-    //    Enforces "never go dark" mechanically -- not by suggestion.
     // ----------------------------------------------------------
     const commThreshold = cfg.commGateThreshold || 8;
 
@@ -576,9 +587,7 @@ const plugin = {
     }, { priority: 55 });
 
     // ----------------------------------------------------------
-    // 7. TASK-STALLED-ALERT (before_prompt_build, priority 60)
-    //    STALLED injection ONLY. Regular task reminders replaced by
-    //    the blocking gate above. Only fires for high-urgency STALLED.
+    // 8. TASK-STALLED-ALERT (before_prompt_build, priority 40)
     // ----------------------------------------------------------
     api.on("before_prompt_build", async () => {
       promptTurnCount++;
@@ -694,11 +703,7 @@ const plugin = {
     }, { priority: 50 });
 
     // ----------------------------------------------------------
-    // 9. HEARTBEAT-GATE (before_tool_call, priority 45)
-    //    Blocks work tools if heartbeat activities haven't happened
-    //    in the configured interval. Wall-clock enforcement.
-    //    law-reinforcement REMOVED: 9 injections/day, 0 compliance.
-    //    Specific rules now enforced by blocking gates above.
+    // 10. HEARTBEAT-GATE (before_tool_call, priority 45)
     // ----------------------------------------------------------
     const heartbeatMs = cfg.heartbeatIntervalMs || 10 * 60 * 1000;
 
@@ -742,7 +747,7 @@ const plugin = {
       currentTurn++;
     });
 
-    log("registered: 11 before_tool_call (10 blocking + 1 tracker) + 3 before_prompt_build + 1 message_received (15 Jeraptha v2.4 hooks)");
+    log("registered: 12 before_tool_call (11 blocking + 1 tracker) + 3 before_prompt_build + 1 message_received (16 Jeraptha v2.5 hooks)");
   },
 };
 
