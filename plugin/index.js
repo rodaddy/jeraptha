@@ -17,13 +17,14 @@
 // task-context injection (14 injections/day, 0 compliance). Replaced with
 // blocking gates that prevent work until compliance actions are taken.
 
-import { readFileSync, writeFileSync, existsSync, statSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, statSync, unlinkSync } from "fs";
 import { join } from "path";
 
 const WORKSPACE = join(process.env.HOME || "/Users/rico", ".openclaw/workspace");
 const SCORECARD_PATH = join(WORKSPACE, "SCORECARD.md");
 const TASKS_PATH = join(WORKSPACE, "TASKS.md");
 const CONVERSATIONS_PATH = join(WORKSPACE, "CONVERSATIONS.md");
+const RESUME_PATH = join(WORKSPACE, "RESUME.md");
 
 // ============================================================
 // NO-SELF-SURGERY constants
@@ -142,6 +143,7 @@ let obQueriedThisTurn = false;
 let sopSearchedThisTurn = false;
 let sentimentLastMsg = "";
 let promptTurnCount = 0;
+let resumeConsumed = false;
 
 // -- Blocking gate state (v2.1+ -- "if it doesn't block, it gets ignored")
 let lastTasksWriteTurn = 0;
@@ -588,6 +590,29 @@ const plugin = {
     }, { priority: 55 });
 
     // ----------------------------------------------------------
+    // 7b. POST-BOUNCE RESUME (before_prompt_build, priority 60)
+    //     On plugin reload (gateway bounce), check for RESUME.md and
+    //     inject it as context so the agent knows what was happening.
+    //     Fires once, then deletes the file.
+    // ----------------------------------------------------------
+    api.on("before_prompt_build", async () => {
+      if (resumeConsumed) return {};
+      resumeConsumed = true;
+      try {
+        if (!existsSync(RESUME_PATH)) return {};
+        const resume = readFileSync(RESUME_PATH, "utf-8");
+        if (!resume.trim()) return {};
+        unlinkSync(RESUME_PATH);
+        log("INJECTED post-bounce-resume");
+        return {
+          appendSystemContext: `\nPOST-BOUNCE CONTEXT RECOVERY\nThe gateway was restarted mid-session. Here is what was happening before the bounce:\n\n${resume}\n\nResume this work. Do NOT pretend you don't know what happened -- this IS your context.`,
+        };
+      } catch {
+        return {};
+      }
+    }, { priority: 60 });
+
+    // ----------------------------------------------------------
     // 8. TASK-STALLED-ALERT (before_prompt_build, priority 40)
     // ----------------------------------------------------------
     api.on("before_prompt_build", async () => {
@@ -709,7 +734,6 @@ const plugin = {
     // ----------------------------------------------------------
     const heartbeatMs = cfg.heartbeatIntervalMs || 10 * 60 * 1000;
     const activeConversationMs = cfg.activeConversationMs || 5 * 60 * 1000;
-    const RESUME_PATH = join(WORKSPACE, "RESUME.md");
 
     api.on("before_tool_call", async (event, ctx) => {
       if (isHeartbeatSession(ctx)) return {};
@@ -763,7 +787,7 @@ const plugin = {
       lastMessageReceivedTime = Date.now();
     });
 
-    log("registered: 12 before_tool_call (11 blocking + 1 tracker) + 3 before_prompt_build + 1 message_received (16 Jeraptha v2.5 hooks)");
+    log("registered: 12 before_tool_call (11 blocking + 1 tracker) + 4 before_prompt_build + 1 message_received (17 Jeraptha v2.5.1 hooks)");
   },
 };
 
