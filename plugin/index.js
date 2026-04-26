@@ -149,6 +149,7 @@ let lastConversationsWriteTurn = 0;
 let lastScorecardWriteTime = Date.now();  // grace: treat boot as fresh
 let toolCallsSinceMessage = 0;
 let currentTurn = 0;
+let lastMessageReceivedTime = Date.now();  // grace: treat boot as active
 let skillConsultedThisTurn = false;
 let tasksReadThisSession = false;
 let conversationsReadThisSession = false;
@@ -704,22 +705,27 @@ const plugin = {
 
     // ----------------------------------------------------------
     // 10. HEARTBEAT-GATE (before_tool_call, priority 45)
+    //     v2.5.1: skip during active conversations (C), write RESUME.md breadcrumb on block (A)
     // ----------------------------------------------------------
     const heartbeatMs = cfg.heartbeatIntervalMs || 10 * 60 * 1000;
+    const activeConversationMs = cfg.activeConversationMs || 5 * 60 * 1000;
+    const RESUME_PATH = join(WORKSPACE, "RESUME.md");
 
     api.on("before_tool_call", async (event, ctx) => {
       if (isHeartbeatSession(ctx)) return {};
       const tn = (event.toolName || "").toLowerCase();
 
-      // Only gate exec/bash -- let messages through (communication is never blocked by heartbeat)
       if (tn !== "exec" && tn !== "bash") return {};
       if (isComplianceExec(event.params)) return {};
-
-      // Grace period
       if (currentTurn <= graceTurns) return {};
 
-      // Check file mtime -- heartbeat runs in isolated sessions with their own
-      // plugin state, so in-memory lastScorecardWriteTime misses their writes.
+      // C: skip heartbeat entirely during active conversations
+      const sinceLastMessage = Date.now() - lastMessageReceivedTime;
+      if (sinceLastMessage < activeConversationMs) {
+        log("heartbeat-gate: skipped (active conversation, " + Math.round(sinceLastMessage / 1000) + "s since last message)");
+        return {};
+      }
+
       let lastWrite = lastScorecardWriteTime;
       try {
         const mtime = statSync(SCORECARD_PATH).mtimeMs;
@@ -730,10 +736,19 @@ const plugin = {
 
       const mins = Math.round(elapsed / 60000);
       const blockedHB = event.params?.command || event.params?.cmd || event.params?.text || tn;
+
+      // A: write RESUME.md breadcrumb so agent can pick back up
+      try {
+        const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
+        const resume = `# Resume Point\n\n**When:** ${ts}\n**Interrupted by:** heartbeat gate (${mins}min overdue)\n**Was about to run:** \`${String(blockedHB).substring(0, 200)}\`\n**Turn:** ${currentTurn}\n\nAfter heartbeat, resume this immediately.\n`;
+        writeFileSync(RESUME_PATH, resume, "utf-8");
+        log("heartbeat-gate: wrote RESUME.md breadcrumb");
+      } catch {}
+
       log("BLOCKED heartbeat-gate: " + mins + " min since scorecard update");
       return {
         block: true,
-        blockReason: `HEARTBEAT GATE: No heartbeat activity in ${mins} minutes. 1) Run heartbeat: read TASKS.md, update SCORECARD.md, session_save to OB. 2) Then IMMEDIATELY resume what you were doing (you were about to: ${String(blockedHB).substring(0, 80)}). Do NOT stop after the heartbeat -- it's a pit stop, not the destination.`,
+        blockReason: `HEARTBEAT GATE: No heartbeat activity in ${mins} minutes. 1) Run heartbeat: read TASKS.md, update SCORECARD.md, session_save to OB. 2) Read ${RESUME_PATH} and IMMEDIATELY resume what you were doing. Do NOT stop after the heartbeat -- it's a pit stop, not the destination.`,
       };
     }, { priority: 45 });
 
@@ -745,6 +760,7 @@ const plugin = {
       sopSearchedThisTurn = false;
       skillConsultedThisTurn = false;
       currentTurn++;
+      lastMessageReceivedTime = Date.now();
     });
 
     log("registered: 12 before_tool_call (11 blocking + 1 tracker) + 3 before_prompt_build + 1 message_received (16 Jeraptha v2.5 hooks)");
