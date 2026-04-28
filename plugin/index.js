@@ -2,14 +2,14 @@
 // Typed plugin hooks (api.on) -- the ONLY dispatch path that works for
 // before_tool_call and before_prompt_build events in OC v2026.4.x
 //
-// v2.5.0 -- 16 hooks (12 before_tool_call + 3 before_prompt_build + 1 message_received)
+// v2.6.0 -- 17 hooks (12 before_tool_call + 4 before_prompt_build + 1 message_received)
 //   before_tool_call:    state-tracker (p110), no-self-surgery (p100),
 //                        no-destructive-git (p95), no-deaf-polls (p90),
 //                        ob-gate (p80), sop-gate (p70), skill-gate (p68),
 //                        task-freshness-gate (p65), conversation-freshness-gate (p62),
 //                        context-before-message (p58), communication-gate (p55),
 //                        heartbeat-gate (p45)
-//   before_prompt_build: sentiment-tracker (p50), task-stalled-alert (p40)
+//   before_prompt_build: prompt-include (p90), sentiment-tracker (p50), task-stalled-alert (p40)
 //   message_received:    state reset + turn counter
 //
 // v2.1 architecture: "if it doesn't block, it gets ignored"
@@ -17,7 +17,7 @@
 // task-context injection (14 injections/day, 0 compliance). Replaced with
 // blocking gates that prevent work until compliance actions are taken.
 
-import { readFileSync, writeFileSync, existsSync, statSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, statSync, readdirSync } from "fs";
 import { join } from "path";
 
 const WORKSPACE = join(process.env.HOME || "/Users/rico", ".openclaw/workspace");
@@ -587,6 +587,70 @@ const plugin = {
     }, { priority: 55 });
 
     // ----------------------------------------------------------
+    // 7b. PROMPT-INCLUDE (before_prompt_build, priority 90)
+    //      Auto-inject *.system.include.md and *.transient.include.md from
+    //      workspace/includes/ every turn. Solves post-compact amnesia.
+    //      Inspired by Space Agent (github.com/agent0ai/space-agent).
+    //      Ref: Jeraptha issue #4
+    // ----------------------------------------------------------
+    const INCLUDES_DIR = join(WORKSPACE, "includes");
+    const MAX_SYSTEM_CHARS = 8000;
+    const MAX_TRANSIENT_CHARS = 4000;
+
+    api.on("before_prompt_build", async () => {
+      let entries;
+      try {
+        entries = readdirSync(INCLUDES_DIR).sort();
+      } catch {
+        // includes/ dir doesn't exist yet -- no-op
+        return {};
+      }
+
+      const systemParts = [];
+      const transientParts = [];
+
+      for (const entry of entries) {
+        let type = null;
+        if (entry.endsWith(".system.include.md")) type = "system";
+        else if (entry.endsWith(".transient.include.md")) type = "transient";
+        if (!type) continue;
+
+        try {
+          let content = readFileSync(join(INCLUDES_DIR, entry), "utf-8").trim();
+          if (!content) continue;
+
+          const target = type === "system" ? systemParts : transientParts;
+          const maxChars = type === "system" ? MAX_SYSTEM_CHARS : MAX_TRANSIENT_CHARS;
+          const totalSoFar = target.reduce((sum, p) => sum + p.length, 0);
+          const remaining = maxChars > 0 ? maxChars - totalSoFar : Infinity;
+
+          if (remaining <= 0) continue;
+          if (content.length > remaining) {
+            content = content.slice(0, remaining) + `\n[... ${entry} truncated at ${remaining} chars ...]`;
+          }
+          target.push(`### source: ${entry}\n${content}`);
+        } catch {
+          // Fail-soft: skip unreadable files
+        }
+      }
+
+      if (systemParts.length === 0 && transientParts.length === 0) return {};
+
+      const sections = [];
+      if (systemParts.length > 0) {
+        sections.push("## Auto-Included Context (system -- persists across compaction)");
+        sections.push(...systemParts);
+      }
+      if (transientParts.length > 0) {
+        sections.push("## Auto-Included Context (transient -- hot/ephemeral)");
+        sections.push(...transientParts);
+      }
+
+      log("INJECTED prompt-include (" + systemParts.length + " system, " + transientParts.length + " transient)");
+      return { appendSystemContext: sections.join("\n\n") };
+    }, { priority: 90 });
+
+    // ----------------------------------------------------------
     // 8. TASK-STALLED-ALERT (before_prompt_build, priority 40)
     // ----------------------------------------------------------
     api.on("before_prompt_build", async () => {
@@ -747,7 +811,7 @@ const plugin = {
       currentTurn++;
     });
 
-    log("registered: 12 before_tool_call (11 blocking + 1 tracker) + 3 before_prompt_build + 1 message_received (16 Jeraptha v2.5 hooks)");
+    log("registered: 12 before_tool_call (11 blocking + 1 tracker) + 4 before_prompt_build + 1 message_received (17 Jeraptha v2.6 hooks)");
   },
 };
 

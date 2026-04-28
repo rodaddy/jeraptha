@@ -72,7 +72,7 @@ backup_dir() {
   fi
 }
 
-log "Installing jeraptha v2.0"
+log "Installing jeraptha v2.6"
 log "  Workspace: $WORKSPACE | Hooks: $HOOKS_DIR"
 log "  Extensions: $EXTENSIONS_DIR | Config: $OC_CONFIG"
 echo ""
@@ -143,6 +143,22 @@ for file in AGENTS.md HEARTBEAT.md; do
   else
     log "  Installing: $file"
     run "cp '$SCRIPT_DIR/workspace/$file' '$WORKSPACE/$file'"
+  fi
+done
+echo ""
+
+# --- Includes (prompt-include system) ---
+log "=== Installing Prompt-Include Files ==="
+run "mkdir -p '$WORKSPACE/includes'"
+for inc in "$SCRIPT_DIR"/workspace/includes/*.include.md; do
+  [ -f "$inc" ] || continue
+  inc_name=$(basename "$inc")
+  dest="$WORKSPACE/includes/$inc_name"
+  if [ -f "$dest" ]; then
+    warn "  $inc_name already exists -- skipping (won't overwrite custom includes)"
+  else
+    log "  Installing include: $inc_name"
+    run "cp '$inc' '$dest'"
   fi
 done
 echo ""

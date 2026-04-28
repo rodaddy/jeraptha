@@ -28,6 +28,7 @@ Awareness and context injection. Not enforcement -- but persistent enough that t
 
 | Hook | Codename | What It Injects | Frequency |
 |------|----------|----------------|-----------|
+| `prompt-include` | 📎 Auto-Include | `*.system.include.md` and `*.transient.include.md` from `workspace/includes/` | Every turn |
 | `task-context` | 📋 Flash Gold | Active tasks from TASKS.md | Every 3 turns (🚨 STALLED: every turn) |
 | `sentiment-tracker` | 📊 Wagering | Behavioral alerts on negative sentiment | On detection |
 | `law-reinforcement` | ⚖️ Standing Orders | Critical behavioral rules | Every 5 turns |

@@ -4,6 +4,33 @@
 
 ---
 
+## v2.6.0 -- 2026-04-27 -- "The Memory That Sticks"
+
+**Inspired by:** Space Agent (github.com/agent0ai/space-agent)
+**Issue:** https://github.com/rodaddy/jeraptha/issues/4
+**Decision:** evolution/decisions/005-prompt-include-system.md
+
+### Added
+- **Prompt-Include hook** (before_prompt_build, p90) -- auto-discovers and injects `*.system.include.md` and `*.transient.include.md` files from `workspace/includes/` into prompt context every turn. Highest-priority prompt hook. Solves post-compact amnesia.
+- **Includes directory** with starter templates:
+  - `behavior.system.include.md` -- standing behavior rules (communication, safety, quality)
+  - `people.system.include.md` -- people database template
+  - `hot-context.transient.include.md` -- heartbeat-updated current work context
+- Token caps: 8K chars for system includes, 4K for transient. Fail-soft on missing/unreadable files.
+- Source provenance: each include tagged with `source: <filename>` in the injection.
+- install.sh updated to deploy includes/ directory (won't overwrite existing custom includes).
+
+### Why
+Post-compact amnesia is the #1 failure mode. After compaction, the agent loses standing behavior, people knowledge, and hot context. Manual recovery requires re-reading 5+ files and often gets skipped. Prompt-include makes critical context automatic and persistent.
+
+### The bet
+Can file-based auto-injection make post-compact recovery seamless? Odds: 3-1 in favor. The pattern is proven in Space Agent -- we're adapting it for infrastructure agents.
+
+### Bilby potential
+This file convention could become an OpenClaw-native feature. Jeraptha is the proof of concept.
+
+---
+
 ## v2.2.0 -- 2026-04-08 -- "You Forgot You Were Talking To Someone"
 
 ### Added
