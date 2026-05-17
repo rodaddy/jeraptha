@@ -3,7 +3,7 @@ name: a2a-client
 description: Talk to any A2A agent on the network. Discover capabilities via Agent Cards, delegate tasks, stream results. The universal client for Skippy to reach Bilby, MonkeyProof, and any future A2A peer.
 metadata:
   version: 0.1.0
-  author: Rico
+  author: <your-name>
   category: infrastructure
 triggers:
   - a2a
@@ -25,8 +25,8 @@ tasks to peers instead of using file drops, SSH, or custom REST calls.
 
 | Agent | Endpoint | What It Does |
 |-------|----------|-------------|
-| **Bilby** | `http://10.71.20.71:41271` | Infrastructure monitoring (health, services, logs, network, debug) |
-| **MonkeyProof** | `http://10.71.1.120:3210` | Remote Claude Code sessions (print + interactive) |
+| **Bilby** | `http://<BILBY_HOST>:41271` | Infrastructure monitoring (health, services, logs, network, debug) |
+| **MonkeyProof** | `http://<SERVICE_HOST>:3210` | Remote Claude Code sessions (print + interactive) |
 
 ## How to Call (curl)
 

@@ -1,7 +1,7 @@
 # OpenClaw Blueprint -- Architecture & Design
 
 **Version:** 1.0 | **Date:** 2026-03-30
-**Scope:** Canonical reference for all PAI OpenClaw instances (Skippy, Kevin, Geetesh)
+**Scope:** Canonical reference for all PAI OpenClaw instances
 **Source material:** OpenClaw v2026.3.28 docs, community best practices, PAI enforcement research
 
 ---
@@ -14,9 +14,9 @@ OpenClaw is PAI's always-on interface layer. Each instance is an autonomous agen
 
 | Instance | Persona | Home | Primary Channel | Role |
 |----------|---------|------|-----------------|------|
-| Skippy | Sarcastic Elder AI | MacBook Air (10.71.1.21) | Discord (SecondBrain) | Rico's PA -- research, ops, coding, comms |
-| Kevin's Bot | TBD | CC LXC (CT 321) or dedicated | Discord (king-cap) | Kevin's PA -- data pipelines, DuckDB, trading |
-| G's Bot | TBD | CC LXC (CT 322) or dedicated | Discord (king-cap) | Geetesh's PA -- dev tasks, onboarding |
+| Skippy | Sarcastic Elder AI | MacBook Air (<AGENT_HOST_IP>) | Discord | Primary PA -- research, ops, coding, comms |
+| Bot 2 | TBD | CC LXC (CT 321) or dedicated | Discord | Collaborator PA -- data pipelines, DuckDB, trading |
+| Bot 3 | TBD | CC LXC (CT 322) or dedicated | Discord | Collaborator PA -- dev tasks, onboarding |
 
 All three share the same architecture. Per-instance customization happens in workspace files (SOUL.md, IDENTITY.md, USER.md, TOOLS.md) and channel config.
 
@@ -113,7 +113,7 @@ At startup, only SKILL-INDEX.md (names + descriptions) is loaded -- not the full
 
 ## 4. Model Routing
 
-All models go through LiteLLM (10.71.1.33:4000). No external model providers. No OpenRouter. No direct API calls.
+All models go through LiteLLM (<LITELLM_HOST>:4000). No external model providers. No OpenRouter. No direct API calls.
 
 ### Available Models
 
@@ -181,7 +181,7 @@ QMD direct: MCP tools (qmd get, qmd search, qmd vsearch)
 
 ### Tier 3: PostgreSQL + pgvector (Structured Layer)
 
-- **What:** CT 200 (10.71.20.49:5432), existing infrastructure
+- **What:** CT 200 (<YOUR_IP>:5432), existing infrastructure
 - **Strength:** SQL queries, zero hallucination on structured data, scales infinitely
 - **Weakness:** Requires SQL knowledge, can't store personality/vibe
 - **Use for:** Structured data (contacts, task history, metrics, trading data)
@@ -214,9 +214,9 @@ Cron at 2:00 AM ET:
 
 | Instance | Discord | Telegram | iMessage | WhatsApp |
 |----------|---------|----------|----------|----------|
-| Skippy | SecondBrain guild + king-cap guild | @Skippy_Rodaddy_bot | rico@rodaddy.live | Rico + Kevin |
-| Kevin's Bot | king-cap guild | TBD | N/A | TBD |
-| G's Bot | king-cap guild | TBD | N/A | TBD |
+| Skippy | Guild 1 + Guild 2 | @bot_handle | user@example.com | User + collaborator |
+| Bot 2 | Guild 2 | TBD | N/A | TBD |
+| Bot 3 | Guild 2 | TBD | N/A | TBD |
 
 ### Cross-Channel Context
 
@@ -271,10 +271,10 @@ Why: Editing config triggers a reload → gateway restart → WebSocket drop →
 ### Separate Bot Accounts
 
 Each instance uses its own:
-- Discord bot token (not Rico's personal account)
-- GitHub account (Skippy: `Skippy-the-Magnificent-one`)
-- SSH key (per-instance, in `~/.config/skippy-oc/ssh/`)
-- No access to Rico's personal credentials
+- Discord bot token (not your personal account)
+- GitHub account (separate bot account per instance)
+- SSH key (per-instance, in `~/.config/agent-oc/ssh/`)
+- No access to the owner's personal credentials
 
 ### Rate Limiting
 

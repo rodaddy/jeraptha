@@ -103,7 +103,7 @@ Research date: 2026-02-21 (updated 2026-03-16)
 
 ### Storage
 
-- TrueNAS (10.71.1.11): 15.4TB backups, 20.1TB media, 1.84TB LXC NVMe
+- TrueNAS (<NAS_HOST>): 15.4TB backups, 20.1TB media, 1.84TB LXC NVMe
 - PBS 4.1.2 for Proxmox backups
 
 ### Networking
@@ -111,7 +111,7 @@ Research date: 2026-02-21 (updated 2026-03-16)
 - VLANs: 1 (management), 20 (containers), 21 (VPN)
 - 10G backbone: Gateway <-> Switch <-> TrueNAS
 - Gateway: UniFi UDM Pro with WireGuard/OpenVPN/L2TP
-- DNS: Pi-hole split-horizon (*.rodaddy.live -> internal)
+- DNS: Pi-hole split-horizon (*.example.com -> internal)
 
 ---
 
@@ -148,7 +148,7 @@ Research date: 2026-02-21 (updated 2026-03-16)
 | `image` | gemini-3-pro-image-preview | Free |
 | `embeddings` | text-embedding-004 (768-dim) | Free |
 
-Access: `ANTHROPIC_BASE_URL=http://10.71.1.33:4000`
+Access: `ANTHROPIC_BASE_URL=http://<LITELLM_HOST>:4000`
 Auth: `sk-litellm-local`
 OpenClaw-specific aliases planned: `openclaw/sonnet`, `openclaw/haiku`, `openclaw/flash` (with prompt injection guardrail)
 
@@ -188,8 +188,8 @@ Unified PostgreSQL + pgvector knowledge store. Shipped v1.1 (2026-03-15).
 
 AI trading system with 4-agent architecture. Next.js 16 / React 19 / TypeScript 5.
 
-- **Prod**: CT 302 (10.71.20.62), https://king-ng.rodaddy.live
-- **UAT**: CT 303 (10.71.20.64)
+- **Prod**: CT 302 (<APP_DB_HOST>), https://king-ng.example.com
+- **UAT**: CT 303 (<YOUR_IP>)
 - **Agents**: Sentinel (monitoring), Analyst (data analysis), Strategist (strategy), Executor (execution)
 - **Database**: PostgreSQL on CT 302 (king_ng database, king role)
 - **Future**: king-cap Discord server for agent run data + strategy discovery via OpenClaw

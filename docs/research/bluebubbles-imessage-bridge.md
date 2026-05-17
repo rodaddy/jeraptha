@@ -45,7 +45,7 @@ Already built in: `channels.bluebubbles` config in openclaw.json:
               ┌────────────────┼────────────────┐
               │                │                │
         ┌─────┴─────┐   ┌─────┴─────┐   ┌─────┴─────┐
-        │ Rico PA    │   │ Kevin PA  │   │ Strategy  │
+        │ User PA    │   │ Collab PA │   │ Strategy  │
         │ CT 310     │   │ CT 311    │   │ CT 312    │
         │ OpenClaw   │   │ OpenClaw  │   │ OpenClaw  │
         └────────────┘   └───────────┘   └───────────┘

@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# oc-channel — Safe channel management for openclaw.json
+# Scoped to discord.guilds.*.channels only. Exempted from carapace lock.
+set -euo pipefail
+
+CONFIG="$HOME/.openclaw/openclaw.json"
+BACKUP="$HOME/.openclaw/openclaw.json.bak"
+
+usage() {
+  cat <<EOF
+Usage: oc-channel <command> [args]
+
+Commands:
+  add <guild_id> <channel_id> [--require-mention]  Add channel to guild
+  remove <guild_id> <channel_id>                    Remove channel from guild
+  list [guild_id]                                   List channels
+EOF
+  exit 1
+}
+
+[[ $# -lt 1 ]] && usage
+cmd="$1"; shift
+
+case "$cmd" in
+  add)
+    [[ $# -lt 2 ]] && { echo "Usage: oc-channel add <guild_id> <channel_id> [--require-mention]"; exit 1; }
+    guild="$1"; channel="$2"
+    require_mention="false"
+    [[ "${3:-}" == "--require-mention" ]] && require_mention="true"
+
+    if ! jq -e ".channels.discord.guilds[\"$guild\"]" "$CONFIG" > /dev/null 2>&1; then
+      echo "Error: Guild $guild not found in config"; exit 1
+    fi
+    if jq -e ".channels.discord.guilds[\"$guild\"].channels[\"$channel\"]" "$CONFIG" > /dev/null 2>&1; then
+      echo "Channel $channel already exists in guild $guild"; exit 0
+    fi
+
+    cp "$CONFIG" "$BACKUP"
+    jq ".channels.discord.guilds[\"$guild\"].channels[\"$channel\"] = {\"requireMention\": $require_mention}" \
+      "$CONFIG" > /tmp/oc-channel-tmp.json
+    mv /tmp/oc-channel-tmp.json "$CONFIG"
+    echo "Added channel $channel to guild $guild (requireMention: $require_mention)"
+    openclaw gateway restart 2>&1
+    ;;
+
+  remove)
+    [[ $# -lt 2 ]] && { echo "Usage: oc-channel remove <guild_id> <channel_id>"; exit 1; }
+    guild="$1"; channel="$2"
+
+    if ! jq -e ".channels.discord.guilds[\"$guild\"].channels[\"$channel\"]" "$CONFIG" > /dev/null 2>&1; then
+      echo "Channel $channel not found in guild $guild"; exit 1
+    fi
+
+    cp "$CONFIG" "$BACKUP"
+    jq "del(.channels.discord.guilds[\"$guild\"].channels[\"$channel\"])" \
+      "$CONFIG" > /tmp/oc-channel-tmp.json
+    mv /tmp/oc-channel-tmp.json "$CONFIG"
+    echo "Removed channel $channel from guild $guild"
+    openclaw gateway restart 2>&1
+    ;;
+
+  list)
+    guild="${1:-}"
+    if [[ -n "$guild" ]]; then
+      jq -r ".channels.discord.guilds[\"$guild\"].channels // empty | to_entries[] | \"\(.key)  requireMention=\(.value.requireMention)\"" "$CONFIG"
+    else
+      jq -r '.channels.discord.guilds | to_entries[] | .key as $g | .value.channels // {} | to_entries[] | "\($g)  \(.key)  requireMention=\(.value.requireMention)"' "$CONFIG"
+    fi
+    ;;
+
+  *) usage ;;
+esac

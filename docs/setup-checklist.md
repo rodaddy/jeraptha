@@ -4,7 +4,7 @@ Single source of truth for standing up a new OpenClaw instance on macOS.
 Derived from the Skippy Air deployment (2026-03-17) and every fix since.
 
 **Last updated:** 2026-04-08
-**Validated against:** MacBook Air (10.71.1.21), OpenClaw v2026.4.5
+**Validated against:** MacBook Air (<AGENT_HOST_IP>), OpenClaw v2026.4.5
 
 ---
 
@@ -17,8 +17,8 @@ Derived from the Skippy Air deployment (2026-03-17) and every fix since.
 | Homebrew | latest | `/bin/bash -c "$(curl -fsSL ...)"` |
 | mcp2cli | 0.2.0 | Manual binary install to `~/.local/bin/` |
 | iMCP.app | latest | `/Applications/iMCP.app` (native Swift, 93 tools) |
-| LiteLLM | accessible | Must be reachable at configured URL (e.g., 10.71.1.33:4000) |
-| Open Brain | accessible | Must be reachable (e.g., 10.71.20.15:3100) |
+| LiteLLM | accessible | Must be reachable at configured URL (e.g., <LITELLM_HOST>:4000) |
+| Open Brain | accessible | Must be reachable (e.g., <OPEN_BRAIN_HOST>:3100) |
 
 ---
 
@@ -330,14 +330,14 @@ Minimum for OC:
     "open-brain": {
       "description": "Open Brain semantic knowledge base",
       "backend": "http",
-      "url": "http://10.71.20.15:3100/mcp",
+      "url": "http://<OPEN_BRAIN_HOST>:3100/mcp",
       "headers": {
         "Authorization": "Bearer AGENT_TOKEN_HERE"
       }
     },
     "vaultwarden-secrets": {
       "backend": "http",
-      "url": "http://10.71.20.14:3001/mcp",
+      "url": "http://<YOUR_IP>:3001/mcp",
       "headers": {
         "Authorization": "Bearer AGENT_TOKEN_HERE"
       }
@@ -393,12 +393,12 @@ OpenClaw uses mcporter for its internal MCP calls (NOT mcp2cli). The agent's exe
 {
   "open-brain": {
     "transport": "streamable-http",
-    "url": "http://10.71.20.15:3100/mcp",
+    "url": "http://<OPEN_BRAIN_HOST>:3100/mcp",
     "headers": {"Authorization": "Bearer ADMIN_TOKEN"}
   },
   "vaultwarden": {
     "transport": "streamable-http",
-    "url": "http://10.71.20.14:3001/mcp",
+    "url": "http://<YOUR_IP>:3001/mcp",
     "headers": {"Authorization": "Bearer ADMIN_TOKEN"}
   },
   "qmd": {
@@ -412,7 +412,7 @@ OpenClaw uses mcporter for its internal MCP calls (NOT mcp2cli). The agent's exe
     "args": ["n8n-mcp"],
     "env": {
       "MCP_MODE": "stdio",
-      "N8N_API_URL": "https://n8n.rodaddy.live",
+      "N8N_API_URL": "https://n8n.example.com",
       "N8N_API_KEY": "JWT_TOKEN"
     }
   }
@@ -566,8 +566,8 @@ lsof -iTCP:9501 -sTCP:LISTEN
 mcp2cli open-brain search_brain --params '{"query":"test","limit":1}'
 
 # Network deps
-curl -s -m 5 http://10.71.1.33:4000/health    # LiteLLM
-curl -s -m 5 http://10.71.20.15:3100/health    # Open Brain
+curl -s -m 5 http://<LITELLM_HOST>:4000/health    # LiteLLM
+curl -s -m 5 http://<OPEN_BRAIN_HOST>:3100/health    # Open Brain
 
 # Config valid
 openclaw doctor --fix
@@ -617,7 +617,7 @@ OC workspace skills can't follow symlinks. Copy files, don't symlink.
 launchd processes don't inherit `.zshrc` PATH. Set full PATH in each LaunchAgent plist.
 
 ### 14. openclaw.json Ownership (2026-04-03, observed)
-File was `root:wheel` instead of `rico:staff`. Can cause permission issues on writes. Fix: `chown rico:staff ~/.openclaw/openclaw.json`.
+File was `root:wheel` instead of `user:staff`. Can cause permission issues on writes. Fix: `chown user:staff ~/.openclaw/openclaw.json`.
 
 ### 15. Discord Slash Commands Silently Denied (2026-04-01)
 `commands.useAccessGroups` defaults to `true`. With no access groups or `allowFrom` configured, ALL slash commands return "Application did not respond" in guild channels. Fix: `commands.useAccessGroups: false`. If you need access control, configure `commands.allowFrom` with user IDs keyed by provider.
@@ -638,7 +638,7 @@ Copying config templates from one agent (e.g., Skippy) to another (e.g., Bob) le
 Shell truncates the output file before jq reads it. `jq '.foo = "bar"' file.json > file.json` = 0 bytes. ALWAYS: `cp file file.backup-$(date +%s)` then write to a temp file and `mv`.
 
 ### 21. Config Backup to GitHub (2026-03-22)
-Private repo `Skippy-the-Magnificent-one/skippy-config` holds all configs, SOUL, AGENTS, BOOT, HEARTBEAT, TOOLCONFIG. Push after significant config changes.
+Private repo for config backup holds all configs, SOUL, AGENTS, BOOT, HEARTBEAT, TOOLCONFIG. Push after significant config changes.
 
 ---
 

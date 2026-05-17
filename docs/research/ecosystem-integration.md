@@ -11,7 +11,7 @@ OpenClaw is the always-on interface layer connecting PAI's shipped infrastructur
 | Project | Version | Status | Location |
 |---------|---------|--------|----------|
 | OpenClaw runtime | v2026.3.13-1 (latest) | NOT INSTALLED (v2026.1.24 deleted) | Needs fresh install |
-| Open Brain | v1.1 | SHIPPED (22/22 requirements) | LXC 208 (10.71.20.15:3100) |
+| Open Brain | v1.1 | SHIPPED (22/22 requirements) | LXC 208 (<OPEN_BRAIN_HOST>:3100) |
 | mcp2cli | v1.3 | SHIPPED (43/43 requirements, 678 tests) | CLI tool, saves ~11K tokens/session |
 | skippy-agentspace | v1.2 | SHIPPED (16 skills, 11 abilities) | /Volumes/ThunderBolt/Development/skippy-agentspace/ |
 | skippy-matrix | extracted | PARTIAL (scripts missing, launchd running) | /Volumes/ThunderBolt/Development/skippy-matrix/ |
@@ -37,7 +37,7 @@ OpenClaw is the always-on interface layer connecting PAI's shipped infrastructur
               │            │                    │
        ┌──────┴──────┐ ┌──┴───────────┐ ┌─────┴──────────┐
        │   LiteLLM    │ │  clawdbot-mcp │ │  mcp2cli       │
-       │  10.71.1.33   │ │  capture +    │ │  CLI bridge    │
+       │  <LITELLM_HOST>   │ │  capture +    │ │  CLI bridge    │
        │  :4000        │ │  recall       │ │  to all MCPs   │
        │              │ │              │ │                │
        │ openclaw/*   │ │ n8n webhooks │ │ open-brain     │
@@ -114,7 +114,7 @@ OpenClaw is the always-on interface layer connecting PAI's shipped infrastructur
 
 ```
 1. Install OpenClaw v2026.3.x locally (MacBook Air)
-2. Configure LiteLLM provider (10.71.1.33:4000)
+2. Configure LiteLLM provider (<LITELLM_HOST>:4000)
 3. Port Skippy persona (SOUL file)
 4. Wire Discord channel (bot tokens exist)
    └── Skippy PA is functional at this point

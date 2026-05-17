@@ -46,8 +46,8 @@ check "suppressErrors=false" "$(r 'jq -e ".agents.defaults.heartbeat.suppressToo
 
 # Network
 echo "--- Network ---"
-check "LiteLLM" "$(r 'curl -s -m 5 -o /dev/null -w "%{http_code}" http://10.71.1.33:4000/health' | grep -qE '200|2[0-9][0-9]' && echo true || echo false)"
-check "Open Brain" "$(r 'curl -s -m 5 -o /dev/null -w "%{http_code}" http://10.71.20.15:3100/health' | grep -qE '200|2[0-9][0-9]' && echo true || echo false)"
+check "LiteLLM" "$(r 'curl -s -m 5 -o /dev/null -w "%{http_code}" http://<LITELLM_HOST>:4000/health' | grep -qE '200|2[0-9][0-9]' && echo true || echo false)"
+check "Open Brain" "$(r 'curl -s -m 5 -o /dev/null -w "%{http_code}" http://<OPEN_BRAIN_HOST>:3100/health' | grep -qE '200|2[0-9][0-9]' && echo true || echo false)"
 
 # mcp2cli
 echo "--- mcp2cli ---"

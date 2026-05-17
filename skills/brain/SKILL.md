@@ -3,8 +3,8 @@ name: brain
 description: Query, write, and manage your Open Brain knowledge base with automatic namespace resolution. USE WHEN logging thoughts, decisions, searching brain, session saves, or any OB interaction. All OB calls MUST go through this skill for proper namespace tagging.
 metadata:
   version: 0.4.0
-  author: Rico
-  source: https://github.com/rodaddy/open-brain
+  author: <your-name>
+  source: https://github.com/<your-username>/open-brain
   category: utility
 triggers:
   - /brain

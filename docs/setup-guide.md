@@ -8,10 +8,10 @@ Running services required before starting:
 
 | CT | Service | Address | Role |
 |----|---------|---------|------|
-| 200 | PostgreSQL + pgvector | 10.71.20.49:5432 | 1,810 entries, 768-dim HNSW |
-| 202 | n8n | 10.71.20.51:5678 | Workflow orchestration |
-| 203 | SiYuan | 10.71.20.52:6806 | Knowledge base UI |
-| 204 | LiteLLM + Clawdbot | 10.71.1.33:4000 / :18789 | Model routing + Discord |
+| 200 | PostgreSQL + pgvector | <YOUR_IP>:5432 | 1,810 entries, 768-dim HNSW |
+| 202 | n8n | <N8N_HOST>:5678 | Workflow orchestration |
+| 203 | SiYuan | <SIYUAN_HOST>:6806 | Knowledge base UI |
+| 204 | LiteLLM + Clawdbot | <LITELLM_HOST>:4000 / :18789 | Model routing + Discord |
 | 214 | Vaultwarden | Internal | Secrets (`openclaw` profile) |
 
 **Local codebases** (symlinked into `openclaw/`):
@@ -30,7 +30,7 @@ Fastest path to a working local Skippy assistant on Discord.
 ### 0.1 Prerequisites
 - Node.js >= 22 (24 recommended): `brew install node@24` or use nvm
 - Discord bot token (exists in Vaultwarden -- "Discord Bot Token")
-- LiteLLM proxy reachable at 10.71.1.33:4000
+- LiteLLM proxy reachable at <LITELLM_HOST>:4000
 
 ### 0.2 Install & Configure
 ```bash
@@ -43,7 +43,7 @@ Edit `~/.openclaw/openclaw.json`:
 ```json
 {
   "ai": {
-    "baseUrl": "http://10.71.1.33:4000",
+    "baseUrl": "http://<LITELLM_HOST>:4000",
     "apiKey": "<from vaultwarden 'LiteLLM Local'>",
     "model": "main"
   }
@@ -84,18 +84,18 @@ OpenClaw config lives at `~/.openclaw/openclaw.json`. The gateway binds to `ws:/
 
 ### 1.2 Configure LiteLLM Provider
 
-Point OpenClaw at LiteLLM (10.71.1.33). In OpenClaw config (`config.yaml` or env):
+Point OpenClaw at LiteLLM (<LITELLM_HOST>). In OpenClaw config (`config.yaml` or env):
 
 ```yaml
 ai:
-  baseUrl: http://10.71.1.33:4000
+  baseUrl: http://<LITELLM_HOST>:4000
   apiKey: sk-litellm-local   # vaultwarden "LiteLLM Local"
   model: main                # -> claude-sonnet-4-6
 ```
 
 ### 1.3 Fix clawdbot-mcp Webhook URL
 
-Replace hardcoded placeholder `https://n8n.your-domain.example` with `http://10.71.20.51:5678` in clawdbot-mcp source. Webhook paths: `/webhook/capture` (dedup capture), `/webhook/recall` (hybrid search).
+Replace hardcoded placeholder `https://n8n.your-domain.example` with `http://<N8N_HOST>:5678` in clawdbot-mcp source. Webhook paths: `/webhook/capture` (dedup capture), `/webhook/recall` (hybrid search).
 
 ### 1.4 Port Skippy Persona
 
@@ -113,7 +113,7 @@ OpenClaw sends external data (webhooks, email) into AI context -- real injection
 
 **LiteLLM config changes require a direct Vertex session (LAW 15)** -- cannot modify while routed through it.
 
-SSH to LXC 204 (10.71.1.33), edit `/home/litellm/litellm-config.yaml`, add alongside existing aliases:
+SSH to LXC 204 (<LITELLM_HOST>), edit `/home/litellm/litellm-config.yaml`, add alongside existing aliases:
 
 ```yaml
 - model_name: openclaw/sonnet
@@ -127,7 +127,7 @@ SSH to LXC 204 (10.71.1.33), edit `/home/litellm/litellm-config.yaml`, add along
 ### 2.2 Generate Restricted API Key
 
 ```bash
-curl -X POST http://10.71.1.33:4000/key/generate \
+curl -X POST http://<LITELLM_HOST>:4000/key/generate \
   -H "Authorization: Bearer sk-litellm-master-key" \
   -d '{"models": ["openclaw/sonnet","openclaw/haiku","openclaw/flash"], "key_alias": "openclaw-prod"}'
 ```
@@ -164,8 +164,8 @@ Configure in `configs/channels.yaml` with `context_isolation: true` per channel.
 
 | Trigger | n8n Webhook | Channel |
 |---------|-------------|---------|
-| Bookmark saved | `http://10.71.20.51:5678/webhook/capture` | `#inbox` |
-| Knowledge query | `http://10.71.20.51:5678/webhook/recall` | Any |
+| Bookmark saved | `http://<N8N_HOST>:5678/webhook/capture` | `#inbox` |
+| Knowledge query | `http://<N8N_HOST>:5678/webhook/recall` | Any |
 | Health check alert | n8n cron -> Discord webhook | `#monitoring` |
 | Morning briefing | n8n cron (7 AM PST) | `#briefing` |
 
@@ -207,12 +207,12 @@ Already running on CT 200 with `text-embedding-004` (768-dim). The `semantic_sea
 
 | Resource | Address |
 |----------|---------|
-| LiteLLM proxy | `http://10.71.1.33:4000` |
+| LiteLLM proxy | `http://<LITELLM_HOST>:4000` |
 | LiteLLM config | `/home/litellm/litellm-config.yaml` (LXC 204) |
-| n8n | `http://10.71.20.51:5678` |
-| PostgreSQL | `10.71.20.49:5432` |
-| SiYuan | `http://10.71.20.52:6806` |
-| Clawdbot gateway | `http://10.71.1.33:18789` |
+| n8n | `http://<N8N_HOST>:5678` |
+| PostgreSQL | `<YOUR_IP>:5432` |
+| SiYuan | `http://<SIYUAN_HOST>:6806` |
+| Clawdbot gateway | `http://<LITELLM_HOST>:18789` |
 | OpenClaw source | `/Volumes/ThunderBolt/Development/openclaw/moltbot/` |
 | MCP bridge | `/Volumes/ThunderBolt/Development/openclaw/clawdbot-mcp/` |
 | Knowledge backend | `/Volumes/ThunderBolt/Development/openclaw/ai-second-brain/` |

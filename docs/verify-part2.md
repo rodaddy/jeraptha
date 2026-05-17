@@ -42,7 +42,7 @@ r "~/.local/bin/mcp2cli open-brain search_brain --params '{\"query\":\"test\",\"
 **Expected:** JSON response (even if empty results). No connection errors.
 
 **If failing:**
-- Check OB directly: `r "curl -s -m 5 http://10.71.20.15:3100/health"`
+- Check OB directly: `r "curl -s -m 5 http://<OPEN_BRAIN_HOST>:3100/health"`
 - Check config: `r "~/.local/bin/mcp2cli open-brain --help"`
 - Restart daemon: `r "~/.local/bin/mcp2cli daemon restart"`
 
@@ -54,21 +54,21 @@ r "~/.local/bin/mcp2cli open-brain search_brain --params '{\"query\":\"test\",\"
 
 **Command:**
 ```bash
-r "curl -s -m 5 http://10.71.1.33:4000/health"
+r "curl -s -m 5 http://<LITELLM_HOST>:4000/health"
 ```
 
 **Expected:** JSON with healthy status.
 
 **If failing:**
 - LiteLLM is on LXC 204. Check container is running.
-- `ssh root@10.71.1.33 "systemctl status litellm"`
+- `ssh root@<LITELLM_HOST> "systemctl status litellm"`
 - Without LiteLLM, agent cannot make LLM calls.
 
 ### 7.2 Open Brain API
 
 **Command:**
 ```bash
-r "curl -s -m 5 http://10.71.20.15:3100/health"
+r "curl -s -m 5 http://<OPEN_BRAIN_HOST>:3100/health"
 ```
 
 **Expected:** HTTP 200 or JSON health response.
@@ -158,7 +158,7 @@ r "jq -r '.. | .model? // empty' ~/.openclaw/sessions.json 2>/dev/null | sort -u
 
 ## 10. Behavioral (Report Only)
 
-Do not auto-fix these -- report to Rico.
+Do not auto-fix these -- report to the admin.
 
 ### 10.1 Scorecard
 

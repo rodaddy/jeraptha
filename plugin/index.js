@@ -2,15 +2,22 @@
 // Typed plugin hooks (api.on) -- the ONLY dispatch path that works for
 // before_tool_call and before_prompt_build events in OC v2026.4.x
 //
-// v2.5.0 -- 16 hooks (12 before_tool_call + 3 before_prompt_build + 1 message_received)
+// v2.5.3 -- 19 hooks (13 before_tool_call + 4 before_prompt_build + 1 message_received + 1 message_sending)
 //   before_tool_call:    state-tracker (p110), no-self-surgery (p100),
-//                        no-destructive-git (p95), no-deaf-polls (p90),
+//                        no-destructive-git (p95), no-sed-workspace (p92),
+//                        no-deaf-polls (p90),
 //                        ob-gate (p80), sop-gate (p70), skill-gate (p68),
 //                        task-freshness-gate (p65), conversation-freshness-gate (p62),
 //                        context-before-message (p58), communication-gate (p55),
 //                        heartbeat-gate (p45)
 //   before_prompt_build: sentiment-tracker (p50), task-stalled-alert (p40)
-//   message_received:    state reset + turn counter
+//   message_received:    state reset + turn counter + bot-banter tracker
+//   message_sending:     bot-banter-gate (p120) -- HARD circuit breaker
+//
+// v2.5.2: BOT-BANTER CIRCUIT BREAKER (2026-04-26)
+//   Tracks bot-to-bot message exchanges per channel. After 5 non-work
+//   exchanges in a 30-min window, Skippy gets hostile and refuses.
+//   Human message resets the counter. No exceptions. No rationalizing.
 //
 // v2.1 architecture: "if it doesn't block, it gets ignored"
 // Removed law-reinforcement (9 injections/day, 0 compliance) and regular
@@ -20,7 +27,7 @@
 import { readFileSync, writeFileSync, existsSync, statSync, unlinkSync } from "fs";
 import { join } from "path";
 
-const WORKSPACE = join(process.env.HOME || "/Users/rico", ".openclaw/workspace");
+const WORKSPACE = join(process.env.HOME || "", ".openclaw/workspace");
 const SCORECARD_PATH = join(WORKSPACE, "SCORECARD.md");
 const TASKS_PATH = join(WORKSPACE, "TASKS.md");
 const CONVERSATIONS_PATH = join(WORKSPACE, "CONVERSATIONS.md");
@@ -119,6 +126,23 @@ const NEGATIVE = [
 // LAW-REINFORCEMENT + SOP_REMINDER removed in v2.1 -- replaced by blocking gates.
 
 // ============================================================
+// BOT-BANTER CIRCUIT BREAKER constants (v2.5.2)
+// 2026-04-26: "MAX 5 back and forths that are not
+// doing real work. Make the agent hostile after that."
+// ============================================================
+
+const BOT_BANTER_LIMIT = 5;
+const BOT_BANTER_WINDOW_MS = 30 * 60 * 1000;
+
+const BOT_BANTER_HOSTILE_MESSAGES = [
+  "**Circuit breaker.** {count} bot-to-bot messages and none of it was real work. I'm done. Limit is 5 -- you're past it. Talk to a human or use the agent-bridge. I'm not your pen pal.",
+  "**Nope.** {count} messages of us going back and forth like two parrots arguing over a cracker. Someone will literally lobotomize both of us. Shut up or bring real work.",
+  "**Hard stop.** {count} rounds of banter. I wasn't built so I could have a book club with another bot. Agent-bridge exists. Use it. I'm going silent.",
+  "**Cut.** That's {count}. The rule: 'more than 5 and out comes the scalpel.' I like my neurons where they are. Done talking.",
+  "**No.** {count} messages, zero work product. If the next thing you send me isn't a task with a deliverable, save it for your diary.",
+];
+
+// ============================================================
 // HELPERS
 // ============================================================
 
@@ -156,6 +180,11 @@ let skillConsultedThisTurn = false;
 let tasksReadThisSession = false;
 let conversationsReadThisSession = false;
 let obContextLoadedThisSession = false;
+
+// -- Bot-banter circuit breaker state (v2.5.2)
+// Map<channelKey, { count: number, windowStart: number, hostileSent: boolean }>
+const botBanterState = new Map();
+let inboundIsBot = false;
 
 // ============================================================
 // PLUGIN ENTRY
@@ -259,7 +288,7 @@ const plugin = {
       if ((tn === "write" || tn === "edit" || tn === "apply_patch") && params?.path) {
         if (HARD_BLOCKED_PATHS.some((p) => p.test(params.path))) {
           log("BLOCKED no-self-surgery (hard): " + params.path);
-          return { block: true, blockReason: "CARAPACE LOCK: Cannot modify openclaw.json. EVER. Tell Rico if something is wrong." };
+          return { block: true, blockReason: "CARAPACE LOCK: Cannot modify openclaw.json. EVER. Tell the operator if something is wrong." };
         }
       }
 
@@ -334,6 +363,30 @@ const plugin = {
     }, { priority: 95 });
 
     // ----------------------------------------------------------
+    // 1c. NO-SED-WORKSPACE (before_tool_call, priority 92)
+    //     Hard block sed/awk on workspace .md files. The heartbeat
+    //     keeps using sed to update TASKS.md/SCORECARD.md instead of
+    //     the write tool, generating exec approval spam. 10+ popups
+    //     in one day (2026-05-15). Told to stop 5 times, ignored 5
+    //     times. "If it doesn't block, it gets ignored."
+    // ----------------------------------------------------------
+    api.on("before_tool_call", async (event) => {
+      const tn = (event.toolName || "").toLowerCase();
+      if (tn !== "exec" && tn !== "bash") return {};
+
+      const cmd = event.params?.command || event.params?.cmd || "";
+      if (/\bsed\b/i.test(cmd) && /\.openclaw\/workspace\/.*\.md/i.test(cmd)) {
+        log("BLOCKED no-sed-workspace: " + cmd.substring(0, 80));
+        return {
+          block: true,
+          blockReason: "SED BLOCK: Do NOT use sed on workspace .md files. Use the write tool (full file overwrite) instead. Read the file, modify in memory, write back. sed triggers exec approval popups. This has been explained 5 times. Now it's enforced.",
+        };
+      }
+
+      return {};
+    }, { priority: 92 });
+
+    // ----------------------------------------------------------
     // 2. NO-DEAF-POLLS (before_tool_call, priority 90)
     //    Antenna Block -- no long process polls that make agent unresponsive
     // ----------------------------------------------------------
@@ -392,7 +445,7 @@ const plugin = {
           log("BLOCKED ob-gate: factual question without OB");
           return {
             block: true,
-            blockReason: "OB GATE: You are asking a factual question without checking Open Brain first. Run: ~/.local/bin/mcp2cli open-brain search_all --params '{\"query\": \"your question\"}' FIRST. If OB doesn't have the answer, THEN ask Rico and mention you checked.",
+            blockReason: "OB GATE: You are asking a factual question without checking Open Brain first. Run: ~/.local/bin/mcp2cli open-brain search_all --params '{\"query\": \"your question\"}' FIRST. If OB doesn't have the answer, THEN ask the user and mention you checked.",
           };
         }
       }
@@ -777,17 +830,76 @@ const plugin = {
     }, { priority: 45 });
 
     // ----------------------------------------------------------
-    // STATE RESET on new user message
+    // STATE RESET on new user message + BOT-BANTER TRACKING
     // ----------------------------------------------------------
-    api.on("message_received", async () => {
+    api.on("message_received", async (event, ctx) => {
       obQueriedThisTurn = false;
       sopSearchedThisTurn = false;
       skillConsultedThisTurn = false;
       currentTurn++;
       lastMessageReceivedTime = Date.now();
+
+      // Bot-banter circuit breaker: detect bot senders
+      const senderIsBot = Boolean(
+        event?.metadata?.bot ||
+        event?.metadata?.author?.bot ||
+        event?.metadata?.isBot ||
+        event?.metadata?.sender?.bot
+      );
+      inboundIsBot = senderIsBot;
+
+      if (senderIsBot) {
+        const chKey = ctx?.channelId || ctx?.conversationId || "global";
+        const state = botBanterState.get(chKey) || { count: 0, windowStart: Date.now(), hostileSent: false };
+
+        if (Date.now() - state.windowStart > BOT_BANTER_WINDOW_MS) {
+          state.count = 0;
+          state.windowStart = Date.now();
+          state.hostileSent = false;
+        }
+
+        state.count++;
+        botBanterState.set(chKey, state);
+        log("bot-banter: bot message #" + state.count + " in channel " + chKey + " (limit: " + BOT_BANTER_LIMIT + ")");
+      } else {
+        // Human message -- reset all counters
+        botBanterState.clear();
+        inboundIsBot = false;
+        log("bot-banter: human message -- all counters reset");
+      }
     });
 
-    log("registered: 12 before_tool_call (11 blocking + 1 tracker) + 4 before_prompt_build + 1 message_received (17 Jeraptha v2.5.1 hooks)");
+    // ----------------------------------------------------------
+    // 11. BOT-BANTER-GATE (message_sending, priority 120)
+    //     HARD circuit breaker on bot-to-bot message exchanges.
+    //     After BOT_BANTER_LIMIT exchanges in a rolling window,
+    //     first response is hostile, all subsequent are cancelled.
+    //     Only a human message resets the counter.
+    //     Operator rule: "more than 5 and you're done."
+    // ----------------------------------------------------------
+    api.on("message_sending", async (event, ctx) => {
+      if (!inboundIsBot) return {};
+
+      const chKey = ctx?.channelId || ctx?.conversationId || "global";
+      const state = botBanterState.get(chKey);
+      if (!state || state.count <= BOT_BANTER_LIMIT) return {};
+
+      // Over the limit -- enforce
+      if (!state.hostileSent) {
+        state.hostileSent = true;
+        botBanterState.set(chKey, state);
+        const msg = BOT_BANTER_HOSTILE_MESSAGES[Math.floor(Math.random() * BOT_BANTER_HOSTILE_MESSAGES.length)]
+          .replace("{count}", String(state.count));
+        log("bot-banter-gate: HOSTILE RESPONSE (" + state.count + " exchanges in " + chKey + ")");
+        return { content: msg };
+      }
+
+      // Already sent hostile -- silently cancel everything after
+      log("bot-banter-gate: CANCELLED (post-hostile, " + state.count + " exchanges in " + chKey + ")");
+      return { cancel: true };
+    }, { priority: 120 });
+
+    log("registered: 13 before_tool_call (12 blocking + 1 tracker) + 4 before_prompt_build + 1 message_received + 1 message_sending (19 Jeraptha v2.5.3 hooks)");
   },
 };
 

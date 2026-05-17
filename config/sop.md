@@ -49,7 +49,7 @@ Append to `~/.openclaw/backups/index.md`:
 - **Dir:** `YYYY-MM-DD-<description>/`
 - **Files:** <list of backed up files>
 - **Reason:** <why we're making this change>
-- **Changed by:** <Rico / Claude Code / Skippy>
+- **Changed by:** <the operator / Claude Code / Skippy>
 ```
 
 ### 3. Make the change
@@ -99,16 +99,16 @@ After bouncing the gateway:
 
 ```bash
 # Bounce
-ssh rico@10.71.1.21 "launchctl kickstart -k gui/\$(id -u)/ai.openclaw.gateway"
+ssh user@<AGENT_HOST_IP> "launchctl kickstart -k gui/\$(id -u)/ai.openclaw.gateway"
 
 # Verify (wait ~10s for startup)
-ssh rico@10.71.1.21 "openclaw gateway status"
+ssh user@<AGENT_HOST_IP> "openclaw gateway status"
 
 # For plugin changes, check registration
-ssh rico@10.71.1.21 "grep '\[jeraptha\]' ~/.openclaw/logs/gateway.log | tail -5"
+ssh user@<AGENT_HOST_IP> "grep '\[jeraptha\]' ~/.openclaw/logs/gateway.log | tail -5"
 
 # For hook changes, verify hook count
-ssh rico@10.71.1.21 "openclaw hooks list 2>/dev/null | head -5"
+ssh user@<AGENT_HOST_IP> "openclaw hooks list 2>/dev/null | head -5"
 ```
 
 ### 6. Test

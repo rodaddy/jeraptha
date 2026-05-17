@@ -11,7 +11,7 @@ Research date: 2026-02-21 (updated 2026-03-16)
 | Component | Status | Details | Action Needed |
 |-----------|--------|---------|---------------|
 | OpenClaw runtime | BROKEN -- deleted | moltbot-2026.1.24 symlink broken, directory deleted | Install fresh v2026.3.x (latest) |
-| LiteLLM connection | Config only | Proxy running at 10.71.1.33:4000 | Add OpenClaw provider config |
+| LiteLLM connection | Config only | Proxy running at <LITELLM_HOST>:4000 | Add OpenClaw provider config |
 | Discord bot | Running | Clawdbot with channels, DMs, slash commands | Add per-channel model routing |
 | Telegram bot | Running | Group + private chat support | Wire to OpenClaw |
 | n8n workflows | Running | Classification, capture, recall, digests | Wire OpenClaw -> n8n webhooks |
@@ -66,7 +66,7 @@ Research date: 2026-02-21 (updated 2026-03-16)
 21. Create OpenClaw skills to query king-ng PostgreSQL (CT 302) for agent run data
 22. Build strategy-finder cron that analyzes patterns across agent runs
 23. Human review gate -- strategy proposals posted to #strategy-desk for approval before any capital deployment
-24. Per-team-member PA channels (#claw-rico, #claw-kevin) with persistent context
+24. Per-team-member PA channels (#claw-user1, #claw-user2) with persistent context
 
 > **Full integration plan:** See `king-ng-integration.md` for LXC specs, Discord server structure, n8n workflow designs, and strategy-finder architecture.
 
@@ -75,13 +75,13 @@ Research date: 2026-02-21 (updated 2026-03-16)
 Discord selected as primary channel for both personal (Skippy PA) and team (king-cap) use:
 - Bot tokens for all 4 personas already exist
 - n8n Discord integration fully baked and working
-- Team preference (Kevin dislikes Slack)
+- Team preference (team prefers Discord)
 - Per-channel model routing supported by OpenClaw
 
 ## king-ng Integration (2026-03-16)
 
 Comprehensive integration plan covering:
-- 3 LXC containers (CT 310-312): Rico PA, Kevin PA, Strategy Finder
+- 3 LXC containers (CT 310-312): User PA, Collaborator PA, Strategy Finder
 - king-cap Discord server with 13 channels across 5 categories
 - 6 new n8n workflows (agent run router, strategy trigger, backtest, cost tracker, health monitor, PA context loader)
 - Strategy-finder architecture with read-only DB access and human approval gates

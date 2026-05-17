@@ -6,7 +6,7 @@ Native Swift app providing 93 tools across 17 Apple services via MCP (Model Cont
 
 iMCP is a forked/extended version of [mattt/iMCP](https://github.com/mattt/iMCP). It runs as a menubar app, exposes tools over Bonjour/TCP, and is accessed via `mcp2cli imcp <tool>`. No Python, no Node -- pure Swift using native Apple frameworks.
 
-**Repo:** [rodaddy/iMCP](https://github.com/rodaddy/iMCP) at `/Volumes/ThunderBolt/Development/mcp/servers/iMCP`
+**Repo:** [<your-username>/iMCP](https://github.com/<your-username>/iMCP) at `/Volumes/ThunderBolt/Development/mcp/servers/iMCP`
 
 ## Services & Tool Count (93 tools)
 
@@ -39,7 +39,7 @@ iMCP is a forked/extended version of [mattt/iMCP](https://github.com/mattt/iMCP)
 cp -R /path/to/iMCP.app /Applications/iMCP.app
 ```
 
-The app is code-signed with Rico's personal dev identity (`R8S2JFBBDW`). On first launch on a different account, right-click > Open to bypass Gatekeeper.
+The app is code-signed with a personal dev identity (`<APPLE_TEAM_ID>`). On first launch on a different account, right-click > Open to bypass Gatekeeper.
 
 ### 2. Launch & Enable Services
 
@@ -106,8 +106,8 @@ cd /Volumes/ThunderBolt/Development/mcp/servers/iMCP
 
 # Dev signed, no sandbox (required for Accessibility/UI scripting)
 xcodebuild -project iMCP.xcodeproj -scheme iMCP -configuration Release build \
-  CODE_SIGN_IDENTITY="Apple Development: rodaddy@icloud.com (M273RUB393)" \
-  CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="R8S2JFBBDW" \
+  CODE_SIGN_IDENTITY="Apple Development: user@example.com (<APPLE_TEAM_ID>)" \
+  CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="<APPLE_TEAM_ID>" \
   PROVISIONING_PROFILE_SPECIFIER="" ENABLE_APP_SANDBOX=NO
 ```
 
@@ -143,7 +143,7 @@ Build scripts and icons are in the iMCP repo at `Scripts/shortcuts/`.
 - **Mail search without scope is slow** -- always pass `account` and/or `mailbox` params.
 - **Weather needs coordinates** -- use `maps_search` to geocode city names first.
 - **Sandbox must be disabled** for UI scripting (Accessibility) to work from within the app.
-- **TCC grants invalidated on binary replacement** if signing identity changes. Stable signing (`R8S2JFBBDW` team) minimizes this.
+- **TCC grants invalidated on binary replacement** if signing identity changes. Stable signing (consistent team ID) minimizes this.
 
 ## Key Corrections (for AI agents)
 

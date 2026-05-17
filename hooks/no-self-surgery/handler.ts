@@ -78,7 +78,7 @@ const handler = async (event: any) => {
       if (pattern.test(cmd)) {
         return {
           block: true,
-          blockReason: `🔒 CARAPACE LOCK: Cannot modify openclaw.json. EVER. If something is wrong with it, STOP and tell Rico. Do not attempt to fix it.`,
+          blockReason: `🔒 CARAPACE LOCK: Cannot modify openclaw.json. EVER. If something is wrong with it, STOP and tell the operator. Do not attempt to fix it.`,
         };
       }
     }
@@ -88,7 +88,7 @@ const handler = async (event: any) => {
     if (HARD_BLOCKED.some((p) => p.test(params.path))) {
       return {
         block: true,
-        blockReason: `🔒 CARAPACE LOCK: Cannot modify openclaw.json. EVER. If something is wrong with it, STOP and tell Rico. Do not attempt to fix it.`,
+        blockReason: `🔒 CARAPACE LOCK: Cannot modify openclaw.json. EVER. If something is wrong with it, STOP and tell the operator. Do not attempt to fix it.`,
       };
     }
   }

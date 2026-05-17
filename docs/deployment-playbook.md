@@ -1,6 +1,6 @@
 # OpenClaw Deployment Playbook
 
-Learned the hard way on 2026-03-17 deploying Skippy on MacBook Air (10.71.10.21).
+Learned the hard way on 2026-03-17 deploying Skippy on MacBook Air (<AGENT_HOST_IP>).
 Reference for all future OpenClaw instances (King-NG PAs, Strategy Finder, LXC deploys).
 
 ## Quick Reference
@@ -169,7 +169,7 @@ The model config goes in `~/.openclaw/openclaw.json` under `models.providers.lit
   "models": {
     "providers": {
       "litellm": {
-        "baseUrl": "http://10.71.20.53:4000",
+        "baseUrl": "http://<LITELLM_HOST>:4000",
         "apiKey": "sk-YOUR-LITELLM-KEY",
         "api": "openai-completions",
         "models": [
@@ -323,9 +323,9 @@ sips -z 1024 1024 source.png --out discord/large.png  # large
 
 ### Phase 12: Reverse Proxy (HTTPS)
 
-On Caddy (CT 205, 10.71.20.55):
+On Caddy (CT 205, <YOUR_IP>):
 ```
-skippy.rodaddy.live {
+agent.example.com {
     reverse_proxy INSTANCE_IP:18789
 }
 ```
@@ -334,10 +334,10 @@ Caddy handles WebSocket upgrade automatically -- no extra config needed.
 
 Add to allowed origins:
 ```bash
-openclaw config set gateway.controlUi.allowedOrigins '["http://localhost:18789","https://YOUR-SUBDOMAIN.rodaddy.live"]'
+openclaw config set gateway.controlUi.allowedOrigins '["http://localhost:18789","https://YOUR-SUBDOMAIN.example.com"]'
 ```
 
-DNS on Pi-hole: point subdomain to 10.71.20.55 (the proxy, NOT the instance).
+DNS on Pi-hole: point subdomain to <YOUR_IP> (the proxy, NOT the instance).
 
 ---
 
@@ -414,8 +414,8 @@ When deploying in LXC containers:
 
 | Instance | CT | IP | Port | Persona | Discord |
 |----------|----|----|------|---------|---------|
-| Rico PA | 310 | TBD | 18789 | Skippy (Rico) | #claw-rico |
-| Kevin PA | 311 | TBD | 18789 | TBD (Kevin) | #claw-kevin |
+| User PA | 310 | TBD | 18789 | Skippy (User) | #claw-user |
+| Collaborator PA | 311 | TBD | 18789 | TBD | #claw-collaborator |
 | Strategy Finder | 312 | TBD | 18789 | Analyst | #strategy-desk |
 
 ---

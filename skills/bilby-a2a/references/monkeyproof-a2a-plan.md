@@ -46,4 +46,4 @@ A2A Client --> A2A Sidecar (:3210) --REST--> MonkeyProof (:3200)
 
 ## Repo
 
-Will be at: github.com/rodaddy/monkeyproof-a2a
+Will be at: github.com/<your-username>/monkeyproof-a2a

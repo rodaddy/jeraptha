@@ -1,7 +1,7 @@
 # Paperclip Agent Test Results -- 2026-04-07
 
 ## Test Environment
-- Paperclip: cc-king (10.71.20.120:3100)
+- Paperclip: cc-king (<SERVICE_HOST>:3100)
 - Company: King Capital (a29d4e8a)
 - Agents: 10 total (6 King Capital + 4 Skippy team)
 - Adapter: claude_local (Claude Code CLI)

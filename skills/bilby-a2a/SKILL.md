@@ -3,8 +3,8 @@ name: bilby-a2a
 description: Talk to Bilby (PAI Agent #2) via A2A protocol. Infrastructure health checks, service monitoring, log analysis, network diagnostics, and remote debugging across the homelab cluster. Bilby runs on CT 271.
 metadata:
   version: 0.1.0
-  author: Rico
-  source: https://github.com/rodaddy/bilby-a2a
+  author: <your-name>
+  source: https://github.com/<your-username>/bilby-a2a
   category: infrastructure
 triggers:
   - ask bilby
@@ -26,12 +26,12 @@ triggers:
 # Bilby A2A -- Infrastructure Monitor Agent
 
 Talk to Bilby via the A2A (Agent-to-Agent) protocol. Bilby is PAI Agent #2
-running on CT 271 (10.71.20.71), specialized in infrastructure monitoring.
+running on CT 271 (<BILBY_HOST>), specialized in infrastructure monitoring.
 
 ## Endpoint
 
-- **Agent Card:** `http://10.71.20.71:41271/.well-known/agent-card.json`
-- **JSON-RPC:** `http://10.71.20.71:41271/`
+- **Agent Card:** `http://<BILBY_HOST>:41271/.well-known/agent-card.json`
+- **JSON-RPC:** `http://<BILBY_HOST>:41271/`
 - **Protocol:** A2A v1.0 (JSON-RPC 2.0 over HTTP)
 
 ## Skills Available
@@ -49,7 +49,7 @@ running on CT 271 (10.71.20.71), specialized in infrastructure monitoring.
 ### Via curl (direct A2A JSON-RPC)
 
 ```bash
-curl -s -X POST http://10.71.20.71:41271/ \
+curl -s -X POST http://<BILBY_HOST>:41271/ \
   -H "Content-Type: application/json" \
   -H "A2A-Version: 1.0" \
   -d '{
@@ -86,7 +86,7 @@ mcp2cli bilby ask_bilby --params '{"query": "check disk space on CT 202"}'
 - "is CT 202 running?"
 - "show failed services on proxmox02"
 - "check disk space on CT 205"
-- "ping 10.71.1.33"
+- "ping <LITELLM_HOST>"
 - "check if port 4000 is open on litellm"
 - "show errors from caddy in the last hour"
 - "what's using memory on proxmox01?"
@@ -109,7 +109,7 @@ Proxmox nodes, other CTs, local system
 
 ## Troubleshooting
 
-- **Connection refused:** `ssh root@10.71.20.71 "systemctl status bilby-a2a"`
+- **Connection refused:** `ssh root@<BILBY_HOST> "systemctl status bilby-a2a"`
 - **Version error:** Missing `A2A-Version: 1.0` header
 - **Task enqueue error:** SDK bug -- restart the service
 - **Slow response:** SSH timeout to a Proxmox node (default 30s)

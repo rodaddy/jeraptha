@@ -31,7 +31,7 @@ const handler = async (event: any) => {
       blockReason:
         `🔇 DEAF POLL BLOCKED: You tried to poll with timeout ${timeout}ms (${Math.round(timeout / 1000)}s). ` +
         `Max allowed is ${MAX_POLL_TIMEOUT_MS}ms (${MAX_POLL_TIMEOUT_MS / 1000}s). ` +
-        `Long polls make you DEAF to Rico's messages. ` +
+        `Long polls make you DEAF to the operator's messages. ` +
         `USE TMUX INSTEAD: \`tmux new-session -d -s agent-name 'command here'\` then check with \`tmux capture-pane\`. ` +
         `Stay available. Never go dark.`,
     };

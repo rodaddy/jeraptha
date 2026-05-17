@@ -24,7 +24,7 @@ It's a behavioral enforcement framework that brings Jeraptha-level discipline to
 
 ```bash
 # Clone the beetles
-git clone git@github.com:rodaddy/jeraptha.git
+git clone git@github.com:<your-username>/jeraptha.git
 cd jeraptha
 
 # Deploy the ECO to your OpenClaw instance
@@ -184,6 +184,6 @@ MIT
 
 ---
 
-*Built by Rico Rojas and Skippy the Magnificent. The Jeraptha would approve -- assuming we let them bet on whether it works.*
+*Built with an unhealthy appreciation for beetle-based compliance systems. The Jeraptha would approve -- assuming we let them bet on whether it works.*
 
 *Chuta.*

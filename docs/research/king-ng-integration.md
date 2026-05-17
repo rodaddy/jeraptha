@@ -8,10 +8,10 @@ Connect king-ng's 4-agent trading system (Sentinel, Analyst, Strategist, Executo
 
 ## Prerequisites
 
-- OpenClaw running locally on Rico's MacBook Air (Phase 0 -- learn the platform first)
+- OpenClaw running locally on MacBook Air (Phase 0 -- learn the platform first)
 - king-ng operational on CT 302 (prod) and CT 303 (UAT) -- already done
-- LiteLLM proxy accessible at 10.71.1.33:4000 -- already done
-- n8n running on CT 202 (10.71.20.51:5678) -- already done
+- LiteLLM proxy accessible at <LITELLM_HOST>:4000 -- already done
+- n8n running on CT 202 (<N8N_HOST>:5678) -- already done
 
 ---
 
@@ -21,15 +21,15 @@ Connect king-ng's 4-agent trading system (Sentinel, Analyst, Strategist, Executo
 
 | CT | Hostname | Purpose | Node | Cores | RAM | Disk | VLAN |
 |----|----------|---------|------|-------|-----|------|------|
-| 310 | oc-rico | Rico's Skippy PA (if not running locally) | px01 | 2 | 2GB | 8GB | 20 |
-| 311 | oc-kevin | Kevin's PA | px01 or px02 | 2 | 2GB | 8GB | 20 |
+| 310 | oc-user1 | User 1's Skippy PA (if not running locally) | px01 | 2 | 2GB | 8GB | 20 |
+| 311 | oc-user2 | User 2's PA | px01 or px02 | 2 | 2GB | 8GB | 20 |
 | 312 | oc-strategist | Strategy-finder (autonomous) | px02 | 4 | 4GB | 16GB | 20 |
 
 **Notes:**
-- CT 310 (Rico PA) may not be needed if Rico runs OpenClaw locally on MacBook Air. Keep as a fallback or for always-on availability when the laptop is closed.
+- CT 310 (User PA) may not be needed if the user runs OpenClaw locally on MacBook Air. Keep as a fallback or for always-on availability when the laptop is closed.
 - CT 312 (Strategy-finder) gets more resources because it will run analysis workloads -- querying king-ng DB, processing agent run data, generating strategy proposals.
 - All containers are unprivileged LXC on VLAN 20 (container network).
-- IPs assigned from the 10.71.20.x range per existing convention.
+- IPs assigned from the container VLAN range per existing convention.
 
 ### Per-Container Setup
 
@@ -76,10 +76,10 @@ WantedBy=multi-user.target
 
 | From | To | Port | Purpose |
 |------|----|------|---------|
-| CT 310-312 | 10.71.1.33 | 4000 | LiteLLM proxy (model routing) |
-| CT 310-312 | 10.71.20.51 | 5678 | n8n webhooks |
-| CT 310-312 | 10.71.20.15 | 3100 | Open Brain MCP server |
-| CT 312 | 10.71.20.62 | 5432 | king-ng PostgreSQL (strategy-finder reads agent data) |
+| CT 310-312 | <LITELLM_HOST> | 4000 | LiteLLM proxy (model routing) |
+| CT 310-312 | <N8N_HOST> | 5678 | n8n webhooks |
+| CT 310-312 | <OPEN_BRAIN_HOST> | 3100 | Open Brain MCP server |
+| CT 312 | <APP_DB_HOST> | 5432 | king-ng PostgreSQL (strategy-finder reads agent data) |
 | CT 310-312 | discord.com | 443 | Discord API (bot connections) |
 
 ### Deployment
@@ -109,8 +109,8 @@ king-cap (Discord Server)
 │
 ├── TEAM
 │   ├── #general          -- Human team chat
-│   ├── #claw-rico        -- Rico's PA channel (Skippy persona)
-│   ├── #claw-kevin       -- Kevin's PA channel
+│   ├── #claw-user1       -- User 1's PA channel (Skippy persona)
+│   ├── #claw-user2       -- User 2's PA channel
 │   └── #war-room         -- High-priority discussions, incident response
 │
 ├── STRATEGY FINDER
@@ -132,13 +132,13 @@ king-cap (Discord Server)
 | KingCap Analyst | Posts analysis to #analyst-reports | openclaw/haiku | CT 302 (webhook) |
 | KingCap Strategist | Posts strategies to #strategy-desk | openclaw/sonnet | CT 302 (webhook) |
 | KingCap Executor | Posts execution logs to #exec-log | openclaw/haiku | CT 302 (webhook) |
-| Skippy (Rico PA) | Rico's personal assistant | openclaw/sonnet | CT 310 or MacBook Air |
-| Kevin PA | Kevin's personal assistant | openclaw/sonnet | CT 311 |
+| Skippy (User PA) | User's personal assistant | openclaw/sonnet | CT 310 or MacBook Air |
+| Collaborator PA | Collaborator's personal assistant | openclaw/sonnet | CT 311 |
 | Strategy Finder | Autonomous analysis bot | openclaw/sonnet | CT 312 |
 
 **Note on agent feeds vs OpenClaw bots:**
 - Agent feed channels (#sentinel-feed, #analyst-reports, etc.) can use simple Discord webhooks from king-ng -- no OpenClaw instance needed. king-ng already has the agent run data; it just needs to POST to Discord webhook URLs.
-- The PA bots (Skippy, Kevin PA) and Strategy Finder are full OpenClaw instances that can receive and respond to messages.
+- The PA bots (Skippy, Collaborator PA) and Strategy Finder are full OpenClaw instances that can receive and respond to messages.
 
 ### Discord Bot Setup
 
@@ -153,8 +153,8 @@ king-cap (Discord Server)
 
 | Role | Agent Feeds | Team Channels | Strategy Finder | Ops |
 |------|-------------|---------------|-----------------|-----|
-| Rico | Read + React | Read + Write | Read + Approve | Full |
-| Kevin | Read + React | Read + Write | Read + Approve | Read |
+| User 1 | Read + React | Read + Write | Read + Approve | Full |
+| User 2 | Read + React | Read + Write | Read + Approve | Read |
 | Bots (agents) | Write only | None | Write only | Write only |
 | PA Bots | None | Read + Write (own channel) | Read | Read |
 | Strategy Finder | Read (all feeds) | None | Write | Write |
@@ -233,25 +233,25 @@ These ai-second-brain workflows can be adapted for king-cap:
 - **Trigger:** Cron (every 15 minutes)
 - **Logic:** Check all OpenClaw gateways (CT 310-312), LiteLLM, king-ng, Open Brain
 - **Output:** Only post to #health on failure or recovery
-- **Alert:** Mention @Rico on critical failures
+- **Alert:** Mention @admin on critical failures
 
 ```
 [Cron 15m] -> [Check endpoints] -> [Compare to last state] -> [If changed: POST to #health]
                   │
-                  ├── CT 310 gateway :18789 (Rico PA)
-                  ├── CT 311 gateway :18789 (Kevin PA)
+                  ├── CT 310 gateway :18789 (User PA)
+                  ├── CT 311 gateway :18789 (Collaborator PA)
                   ├── CT 312 gateway :18789 (Strategy Finder)
-                  ├── LiteLLM 10.71.1.33:4000
-                  ├── king-ng 10.71.20.62:3100
-                  └── Open Brain 10.71.20.15:3100
+                  ├── LiteLLM <LITELLM_HOST>:4000
+                  ├── king-ng <APP_DB_HOST>:3100
+                  └── Open Brain <OPEN_BRAIN_HOST>:3100
 ```
 
 #### W6: PA Context Loader
 - **Trigger:** On OpenClaw PA startup or daily refresh
 - **Logic:** Pull relevant context for each team member from Open Brain
 - **Output:** Inject as system context into the PA's OpenClaw session
-- **Rico:** Recent decisions, active projects, blockers, king-ng status
-- **Kevin:** DuckDB pipeline status, data quality metrics, commodity prices
+- **User 1:** Recent decisions, active projects, blockers, king-ng status
+- **User 2:** DuckDB pipeline status, data quality metrics, commodity prices
 
 ### n8n Credential Requirements
 
@@ -312,7 +312,7 @@ Strategy Finder OpenClaw (CT 312)
     v
 #discoveries (Discord)
     │
-    │  Human review (Rico/Kevin react)
+    │  Human review (team reacts)
     │
     ├── ✅ Approved -> W3 backtest
     ├── ❌ Rejected -> logged, not pursued
@@ -361,14 +361,14 @@ Custom skills to build for the strategy finder's OpenClaw instance:
 
 | Step | Task | Depends On | Effort |
 |------|------|------------|--------|
-| 1 | Rico learns OpenClaw locally (MacBook Air) | Nothing | 1 session |
+| 1 | Learn OpenClaw locally (MacBook Air) | Nothing | 1 session |
 | 2 | Create king-cap Discord server + channels | Nothing | 30 min manual |
 | 3 | Create Discord bot accounts + store tokens | Step 2 | 30 min manual |
 | 4 | Create Discord webhooks for agent feed channels | Step 2 | 15 min manual |
 | 5 | Build W1 (Agent Run Router) in n8n | Steps 3-4 | 1 session |
 | 6 | Build W4 (Cost Tracker) in n8n | Step 3 | 30 min |
 | 7 | Build W5 (Health Monitor) in n8n | Step 3 | 30 min |
-| 8 | Deploy CT 311 (Kevin PA) via /deploy-service | Step 3 | 1 session |
+| 8 | Deploy CT 311 (Collaborator PA) via /deploy-service | Step 3 | 1 session |
 | 9 | Deploy CT 312 (Strategy Finder) via /deploy-service | Step 3 | 1 session |
 | 10 | Create king_reader DB role on CT 302 | Nothing | 10 min |
 | 11 | Build strategy finder OpenClaw skills | Steps 9-10 | 2-3 sessions |
@@ -382,9 +382,9 @@ Custom skills to build for the strategy finder's OpenClaw instance:
 
 ## 6. Open Questions
 
-1. **Rico PA: local vs LXC?** If MacBook Air is always-on (docked), local is fine. If Rico needs PA when laptop is closed, CT 310 is needed.
+1. **User PA: local vs LXC?** If MacBook Air is always-on (docked), local is fine. If the user needs PA when laptop is closed, CT 310 is needed.
 2. **How many strategies per cycle?** Cap at 3 proposals per 4-hour window to avoid noise.
 3. **Backtest infrastructure?** Where does the backtest run? king-ng itself? Separate service? DuckDB?
-4. **Kevin PA persona?** Which PAI persona for Kevin's PA? Or a custom one?
+4. **Collaborator PA persona?** Which PAI persona for the collaborator's PA? Or a custom one?
 5. **Agent feed granularity?** Every agent run, or only runs with notable findings?
 6. **Historical depth?** How far back should the strategy finder look? Last 7 days? 30 days? All time?

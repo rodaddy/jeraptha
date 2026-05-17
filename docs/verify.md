@@ -9,7 +9,7 @@ For a one-shot pass/fail, run `verify-quick.sh` instead.
 
 ```bash
 # Set this if SSH'ing in. Leave blank for local execution.
-OC_HOST="rico@10.71.1.21"
+OC_HOST="user@<AGENT_HOST_IP>"
 
 # Helper -- prefix commands with r() to work both locally and remotely.
 r() { if [[ -n "${OC_HOST:-}" ]]; then ssh -o ConnectTimeout=10 "$OC_HOST" "$@"; else eval "$@"; fi; }
@@ -259,7 +259,7 @@ r "jq '{security: .tools.exec.security, ask: .tools.exec.ask}' ~/.openclaw/openc
 
 **Expected:** `{ "security": "full", "ask": "off" }`
 
-**If failing:** `full` + `off` = YOLO mode. Intentional for PAI. Confirm with Rico for shared instances.
+**If failing:** `full` + `off` = YOLO mode. Intentional for PAI. Confirm with the admin for shared instances.
 
 ### 4.7 Access groups
 

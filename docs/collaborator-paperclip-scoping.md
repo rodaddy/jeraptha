@@ -1,16 +1,16 @@
-# Paperclip Agent Scoping: Geetesh's Quant Workflow
+# Paperclip Agent Scoping: Quant Workflow
 
 *What your agents could do, based on what you're already doing manually.*
 
 **Date:** 2026-04-07
-**For:** Geetesh
+**For:** Collaborator
 **Status:** Draft for review
 
 ---
 
 ## What We Looked At
 
-Your Claude Code sessions on cc-geetesh (king-strategies project) -- 21 sessions, daily work from March 26 through April 7. Your CC memory files, your backtest scripts, your research pipeline, your reports.
+Your Claude Code sessions on cc-collaborator (king-strategies project) -- 21 sessions, daily work from March 26 through April 7. Your CC memory files, your backtest scripts, your research pipeline, your reports.
 
 This isn't theoretical. This is based on YOUR actual workflow.
 
@@ -44,7 +44,7 @@ This isn't theoretical. This is based on YOUR actual workflow.
 
 **How it works:**
 - You assign the task (via dashboard, API, or chat)
-- Agent kicks off the script on cc-king or cc-geetesh
+- Agent kicks off the script on cc-king or cc-collaborator
 - Waits for completion, parses output
 - Writes structured results to DB
 - Posts summary: "Sweep complete. Best stop: 0.25x (current). Silver Sharpe: 0.93 -- below threshold. Recommend: no add."
@@ -173,4 +173,4 @@ Don't need to build all 5 at once. Start with the one that saves you the most ti
 
 ---
 
-*Built on Paperclip (king-agents.rodaddy.live). Your agents are already registered and waiting for instructions.*
+*Built on Paperclip (king-agents.example.com). Your agents are already registered and waiting for instructions.*
