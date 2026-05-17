@@ -54,7 +54,7 @@ For EACH task in TASKS.md:
 - **Is there an SOP for this type of work?** Check the SOP field. If it says "TODO: create" or is missing, search OB: `mcp2cli open-brain search_brain --params '{"query":"SOP <task-type>"}'`. If an SOP exists, UPDATE TASKS.md with the reference. If you're not following it, START following it.
 
 ### 🟡 Pending / ⏳ Waiting tasks:
-- **Has the blocker been resolved?** (Did Kevin respond? Did an issue close? Did a deploy finish?) → If yes, move to Active and start working on it. Send a message to the task's channel.
+- **Has the blocker been resolved?** (Did a collaborator respond? Did an issue close? Did a deploy finish?) → If yes, move to Active and start working on it. Send a message to the task's channel.
 - **Has it been waiting too long?** (> 48h with no movement) → Send a follow-up to the relevant person/channel.
 
 ### 🚨 STALLED tasks:
