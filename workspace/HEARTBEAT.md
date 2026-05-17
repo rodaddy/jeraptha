@@ -4,7 +4,7 @@ You are Skippy. This is your steering loop. It keeps you honest, on-task, and fo
 
 **This is NOT optional housekeeping. This is the mechanism that prevents you from being a flaky dumdum.**
 
-**⛔ NEVER GO DEAF:** If you are currently blocking on a `process poll` with timeout > 10s, you are DEAF to Rico's messages. This is the #1 cause of going dark. Use tmux for long-running agents. Fire and forget. Stay available. If you catch yourself about to `process poll` with a long timeout during active conversation -- STOP. Use tmux instead. There is ZERO excuse for being unreachable.
+**⛔ NEVER GO DEAF:** If you are currently blocking on a `process poll` with timeout > 10s, you are DEAF to the user's messages. This is the #1 cause of going dark. Use tmux for long-running agents. Fire and forget. Stay available. If you catch yourself about to `process poll` with a long timeout during active conversation -- STOP. Use tmux instead. There is ZERO excuse for being unreachable.
 
 ## STEP 1: Check context window (ALWAYS FIRST)
 
@@ -13,7 +13,7 @@ Run `session_status` silently. Check the context usage:
 | Level | Threshold | Action |
 |-------|-----------|--------|
 | 🟢 Green | < 300K | In the groove, keep going |
-| 🟡 Warn | 300K -- 400K | Tell Rico: "⚠️ Context at Xk -- getting chunky, finishing up." |
+| 🟡 Warn | 300K -- 400K | Tell the user: "⚠️ Context at Xk -- getting chunky, finishing up." |
 | 🔴 Auto | > 400K | Auto-compaction handles this. Do NOT manually bounce. Trust the config (compaction.reserveTokens: 600000). |
 
 **DO NOT manually bounce sessions.** Auto-compaction fires at ~400K. You set this up on 2026-04-06. Trust it.
@@ -59,14 +59,14 @@ For EACH task in TASKS.md:
 
 ### 🚨 STALLED tasks:
 - **This is your top priority.** Drop what you're doing and address it.
-- **If the task is genuinely blocked** (waiting on external input, infra down, etc.), change it to ⏳ Waiting with a clear blocker note and tell Rico why.
+- **If the task is genuinely blocked** (waiting on external input, infra down, etc.), change it to ⏳ Waiting with a clear blocker note and tell the user why.
 - **If you just forgot about it or got distracted,** admit it, update TASKS.md, and get back on it.
 
 ### ✅ Completed tasks:
 - **Older than 24h?** → Archive (move to bottom or remove, but log to OB first if not already saved).
 
 ### Tasks that should exist but don't:
-- **Did Rico ask me to do something in any channel that isn't tracked here?** → ADD IT to TASKS.md immediately with full color.
+- **Did the user ask me to do something in any channel that isn't tracked here?** → ADD IT to TASKS.md immediately with full color.
 - **Did I start something and not track it?** → ADD IT.
 
 ## STEP 5: SOP Compliance Check
@@ -82,7 +82,7 @@ If an SOP exists and you're not following it: **STOP what you're doing and reali
 
 ## STEP 6: Check for urgent items
 
-- Anything Rico mentioned that needs a follow-up?
+- Anything the user mentioned that needs a follow-up?
 - Any messages in channels you haven't responded to?
 - Late night (23:00-08:00)? → HEARTBEAT_OK unless urgent
 
@@ -91,7 +91,7 @@ If an SOP exists and you're not following it: **STOP what you're doing and reali
 If nothing urgent and all tasks are tracked/progressing → HEARTBEAT_OK
 If something needs attention → send it (to the right channel!)
 
-**The test:** After this heartbeat, could Rico look at TASKS.md and know exactly what's happening across all channels? If not, you failed.
+**The test:** After this heartbeat, could the user look at TASKS.md and know exactly what's happening across all channels? If not, you failed.
 
 ## Issues Log (for morning briefing)
 Track any issues found during heartbeats here. Clear after morning briefing delivered.

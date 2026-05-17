@@ -42,7 +42,7 @@ Two enforcement layers exist in OC. Only one is being used for LAWs:
 
 `no-self-surgery` already uses the right pattern -- `before_tool_call` with `block: true` and regex matching. It works. The same pattern needs to be applied to LAW enforcement.
 
-## Existing Hook Inventory (on 10.71.1.21)
+## Existing Hook Inventory (on <AGENT_HOST_IP>)
 
 ```
 ~/.openclaw/hooks/
@@ -301,8 +301,8 @@ Extends `no-self-surgery` to cover LiteLLM infrastructure.
 
 ```typescript
 const LITELLM_PATTERNS = [
-  /ssh\s+.*10\.71\.1\.33/i,
-  /ssh\s+.*10\.71\.20\.33/i,
+  /ssh\s+.*<LITELLM_HOST_IP>/i,
+  /ssh\s+.*<LITELLM_HOST_IP>/i,
   /ssh\s+.*litellm/i,
   /ansible.*litellm/i,
   /ansible-playbook.*litellm/i,
@@ -321,7 +321,7 @@ const handler = async (event: any) => {
       if (pattern.test(cmd)) {
         return {
           block: true,
-          blockReason: `LAW 15 (No LiteLLM Self-Surgery): Cannot modify LiteLLM while routed through it. Ask Rico to make this change from a direct session.`,
+          blockReason: `LAW 15 (No LiteLLM Self-Surgery): Cannot modify LiteLLM while routed through it. Ask the admin to make this change from a direct session.`,
         };
       }
     }
@@ -336,7 +336,7 @@ export default handler;
 ## Installation
 
 ```bash
-# On 10.71.1.21
+# On <AGENT_HOST_IP>
 cd ~/.openclaw/hooks/
 
 # Create each hook directory with HOOK.md + handler.ts

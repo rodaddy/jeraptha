@@ -15,14 +15,14 @@
 - Individual agent detail at `/dashboard/agents/[id]`
 - **Limitation:** Static. Each agent has fixed instructions. No inter-agent communication. No task queue. No heartbeat scheduling. Reports are one-shot, not iterative.
 
-### Paperclip (king-agents.rodaddy.live)
+### Paperclip (king-agents.example.com)
 - 10 agents registered (Analyst, Strategist, Risk, Research, Quant + Skippy team)
 - Heartbeat-based execution model -- agents wake, check inbox, do work, sleep
 - Inter-agent messaging (call chains)
 - Dynamic task assignment
 - `canCreateAgents` flag on Masters for dynamic hiring
 - Company ID: `a29d4e8a-6feb-4c58-a3f5-d2a2f3630047`
-- API: `http://10.71.20.120:3100`
+- API: `http://<SERVICE_HOST>:3100`
 
 ---
 
@@ -184,7 +184,7 @@ Recent Tasks:
 
 ## Next Steps
 
-1. **Rico/Geetesh decide:** Option A, B, or C?
+1. **Team decides:** Option A, B, or C?
 2. Build Paperclip API client in dashboard (`src/lib/paperclip/client.ts`)
 3. Wire up agents page to read from Paperclip
 4. Test with a real task: create issue via UI → agent picks up → results display

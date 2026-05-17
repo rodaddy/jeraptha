@@ -11,7 +11,7 @@ let turnCount = 0;
 
 // Path to TASKS.md in the workspace
 const TASKS_PATH = join(
-  process.env.HOME || "/Users/rico",
+  process.env.HOME || "$HOME",
   ".openclaw/workspace/TASKS.md"
 );
 
@@ -36,7 +36,7 @@ const handler = async (event: any) => {
       return {
         prompt:
           (event.context?.prompt || "") +
-          "\n\n📋 TASKS.md NOT FOUND. Create it immediately. Every task Rico gives you must be tracked in TASKS.md.",
+          "\n\n📋 TASKS.md NOT FOUND. Create it immediately. Every task the operator gives you must be tracked in TASKS.md.",
       };
     }
     return undefined;
@@ -88,7 +88,7 @@ const handler = async (event: any) => {
       return {
         prompt:
           (event.context?.prompt || "") +
-          "\n\n📋 TASKS.md: No active tasks. If Rico has asked you to do something, ADD IT to TASKS.md." +
+          "\n\n📋 TASKS.md: No active tasks. If the operator has asked you to do something, ADD IT to TASKS.md." +
           SOP_REMINDER,
       };
     }

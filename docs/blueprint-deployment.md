@@ -64,7 +64,7 @@ cd ~/.openclaw
 # Set model routing (LiteLLM only -- use existing working aliases if migrating)
 # For fresh installs, use the LiteLLM model IDs:
 jq '.models.providers.litellm = {
-  "baseUrl": "http://10.71.1.33:4000",
+  "baseUrl": "http://<LITELLM_HOST>:4000",
   "apiKey": "YOUR_LITELLM_KEY",
   "api": "openai-completions",
   "models": [
@@ -270,7 +270,7 @@ cat > ~/Library/LaunchAgents/ai.openclaw.gateway.plist << 'PLIST'
     <key>OPENCLAW_NO_RESPAWN</key>
     <string>1</string>
     <key>PATH</key>
-    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/Users/rico/.local/bin</string>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/Users/user/.local/bin</string>
   </dict>
   <key>StandardOutPath</key>
   <string>/tmp/openclaw/openclaw-gateway.stdout.log</string>
@@ -345,18 +345,18 @@ openclaw channels status --probe
 
 ### What's Per-Instance (Unique to Each Bot)
 
-| Component | What Changes | Skippy | Kevin's Bot | G's Bot |
-|-----------|-------------|--------|-------------|---------|
+| Component | What Changes | Instance 1 | Instance 2 | Instance 3 |
+|-----------|-------------|------------|------------|------------|
 | **IDENTITY.md** | Name, role, expertise | Skippy the Magnificent, Elder AI | TBD | TBD |
-| **SOUL.md** | Personality, behavioral rules | Sarcastic, insult-to-help pipeline | TBD (Kevin's choice) | TBD (G's choice) |
-| **USER.md** | Owner context, preferences | Rico -- CTO, night owl, bun/uv | Kevin -- data pipelines, DuckDB | Geetesh -- dev, onboarding |
-| **TOOLS.md** | Infrastructure specific to instance | Air IPs, Skippy GitHub | Kevin's LXC, his tools | G's LXC, his tools |
-| **MEMORY.md** | Instance-specific memory | Rico's OB cheat sheet | Kevin's context | G's context |
-| **HEARTBEAT.md** | Proactive monitoring | Rico's targets | Kevin's targets | G's targets |
+| **SOUL.md** | Personality, behavioral rules | Sarcastic, insult-to-help pipeline | TBD | TBD |
+| **USER.md** | Owner context, preferences | Owner -- role, preferences, tools | Collaborator -- their tools | Collaborator -- their tools |
+| **TOOLS.md** | Infrastructure specific to instance | Host IPs, bot GitHub | LXC, tools | LXC, tools |
+| **MEMORY.md** | Instance-specific memory | Owner's OB cheat sheet | Their context | Their context |
+| **HEARTBEAT.md** | Proactive monitoring | Owner's targets | Their targets | Their targets |
 | **BOOT.md** | Startup protocol | Full protocol + Step 7 | Adapted | Adapted |
-| **Channel config** | Discord guilds, bots | SecondBrain + king-cap | king-cap only | king-cap only |
+| **Channel config** | Discord guilds, bots | Guild 1 + Guild 2 | Guild 2 only | Guild 2 only |
 | **Gateway token** | Unique per instance | Unique | Unique | Unique |
-| **Bot credentials** | Discord token, GitHub | Skippy-the-Magnificent-one | Kevin's bot | G's bot |
+| **Bot credentials** | Discord token, GitHub | Bot GitHub account | Their bot | Their bot |
 | **Model string** | May differ per LiteLLM alias | `litellm/sonnet4.6[1M]` | Use same or fresh alias | Use same or fresh alias |
 
 ### Instance Template
@@ -384,9 +384,9 @@ rsync -av ~/.openclaw/hooks/ /path/to/new-instance/hooks/
 
 ---
 
-## 3. Skippy Reference (Air -- 10.71.1.21)
+## 3. Skippy Reference (Air -- <AGENT_HOST_IP>)
 
-**Status as of 2026-03-31:** Running v2026.3.28, blueprint deployed.
+**Status as of 2026-03-31:** Running v2026.3.28, blueprint deployed. *(Names below are examples.)*
 
 ### Working Config State
 
@@ -427,19 +427,13 @@ Workspace:   ROUTER.md, SUPERVISOR.md, BOOT.md (Step 7), all PAI skills synced
 
 ---
 
-## 4. Kevin's Bot (Dedicated LXC -- TBD)
+## 4. Additional Instances (Dedicated LXC -- TBD)
 
 Same as Skippy setup with these differences:
 - Linux: systemd service instead of launchd plist
-- Discord: king-cap guild only, Kevin's bot token
-- Kevin writes IDENTITY.md, SOUL.md, USER.md
+- Discord: team guild only, separate bot token per instance
+- Each collaborator writes their own IDENTITY.md, SOUL.md, USER.md
 - Same hooks, same compat blocks, same model routing
-
----
-
-## 5. G's Bot (Dedicated LXC -- TBD)
-
-Same as Kevin's.
 
 ---
 

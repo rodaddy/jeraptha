@@ -12,7 +12,7 @@ metadata:
 Prevents the "Lost in the Middle" effect where rules from SOUL.md/AGENTS.md/BOOT.md degrade as conversation context grows.
 
 Every 5 turns, appends a compact block of mandatory rules to the prompt. Covers:
-- OB-first (check Open Brain before asking Rico)
+- OB-first (check Open Brain before asking the operator)
 - Skills-first (use skills before doing things manually)
 - Sub-agent usage (spawn workers for parallel/batch tasks)
 - Pipeline enforcement (follow SUPERVISOR.md for multi-step workflows)

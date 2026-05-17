@@ -42,7 +42,7 @@ Research date: 2026-02-21
 ```json5
 {
   api: "openai-completions",
-  baseUrl: "http://10.71.20.53:4000",
+  baseUrl: "http://<LITELLM_HOST>:4000",
   apiKey: "sk-litellm-local",
   models: [
     { id: "main", name: "Claude Sonnet", contextWindow: 200000, maxTokens: 8192 },

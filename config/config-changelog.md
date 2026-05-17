@@ -5,7 +5,7 @@ Check this BEFORE changing config to see if something was already tried and reve
 
 ---
 
-## 2026-04-05: Heartbeat read() loop fix (Rico + Skippy from CC)
+## 2026-04-05: Heartbeat read() loop fix (the operator + Skippy from CC)
 
 ### What broke
 Skippy went completely unresponsive on Discord. Every message returned "Something went wrong."
@@ -170,7 +170,7 @@ Reverting to default (8) until root cause is identified. The previous OOM incide
 
 ---
 
-## 2026-04-09: Seven fixes (Rico + Bob from CC)
+## 2026-04-09: Seven fixes (the operator + Bob from CC)
 
 ### What was changed
 
@@ -190,7 +190,7 @@ Reverting to default (8) until root cause is identified. The previous OOM incide
 **openclaw.json (Air):**
 5. **Compaction mode** -- `agents.defaults.compaction.mode`: `safeguard` -> `default`. Safeguard mode never triggered `memoryFlush.softThresholdTokens: 400000`. Skippy hit 642K with 0 compactions, 0 flush events. Filed as OC issue #63542.
 
-6. **Gateway bind host** -- `gateway.customBindHost`: `10.71.10.21` -> `10.71.1.21` (typo fix, wrong subnet).
+6. **Gateway bind host** -- `gateway.customBindHost`: `<YOUR_IP>` -> `<AGENT_HOST_IP>` (typo fix, wrong subnet).
 
 7. **TLS certs** -- Added `NODE_EXTRA_CA_CERTS=/etc/ssl/cert.pem` to `env.vars` and `~/.zshenv`. Node v25.8.2 (Homebrew) missing Google Trust Services root certs; Discord uses GTS. `openclaw message send` was failing with `unable to get local issuer certificate`.
 
@@ -200,7 +200,7 @@ Reverting to default (8) until root cause is identified. The previous OOM incide
 
 **SCORECARD.md (Air workspace):**
 - Reset score from -10 (Skippy's self-set value) to -42 (actual carry-forward)
-- Added rules: only Rico adjusts score, fudging is a scored violation
+- Added rules: only the operator adjusts score, fudging is a scored violation
 
 ### Why (per fix)
 1. Boot check text contains "correction", "again", "accountability" -- matches negative sentiment patterns but isn't real user criticism
@@ -208,7 +208,7 @@ Reverting to default (8) until root cause is identified. The previous OOM incide
 3. Heartbeat sessions blocked by their own gates = heartbeat can't complete = gate keeps firing = infinite loop
 4. Need to verify `ctx.sessionKey` actually contains "heartbeat" or "isolated" -- if not, the exemption won't work
 5. `safeguard` appears to skip the softThreshold check entirely -- possible OC bug
-6. Air's IP is 10.71.1.21, not 10.71.10.21
+6. Air's IP is <AGENT_HOST_IP>, not <YOUR_IP>
 7. Homebrew Node's compiled-in cert bundle doesn't include GTS Root R4
 
 ### Backups

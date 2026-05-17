@@ -1,7 +1,7 @@
 # Gist Workflow Analysis
 
 Research date: 2026-02-21
-Source: https://gist.github.com/velvet-shark/b4c6724c391f612c4de4e9a07b0a74b6
+Source: https://gist.github.com/<github-user>/b4c6724c391f612c4de4e9a07b0a74b6
 
 20 real-world automation workflows from 50 days of OpenClaw usage.
 

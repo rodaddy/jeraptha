@@ -69,7 +69,7 @@ Hooks are TypeScript files at `~/.openclaw/hooks/<name>/handler.ts` with a compa
 
 | # | Rule | Why It's Here |
 |---|------|---------------|
-| 1 | OB FIRST -- search Open Brain before asking user ANY factual question | Agent keeps asking Rico things stored in OB |
+| 1 | OB FIRST -- search Open Brain before asking user ANY factual question | Agent keeps asking the user things stored in OB |
 | 2 | SKILLS FIRST -- check SKILL-INDEX.md before doing anything manually | Agent does tasks manually when skills exist |
 | 3 | SUB-AGENTS -- spawn workers for batch/parallel/research tasks | Agent processes everything sequentially in main context |
 | 4 | PIPELINES -- follow SUPERVISOR.md for multi-step workflows | Agent wings complex workflows instead of following defined pipelines |
@@ -243,7 +243,7 @@ See `workspace-staging/SUPERVISOR.md` for full pipeline definitions with step-by
   "schedule": "0 7 * * *",
   "timezone": "America/New_York",
   "agent": "main",
-  "prompt": "Execute the Morning Briefing pipeline from SUPERVISOR.md. Send results to Rico on Discord.",
+  "prompt": "Execute the Morning Briefing pipeline from SUPERVISOR.md. Send results to the user on Discord.",
   "model": "litellm/claude-sonnet-4-6@default"
 }
 ```

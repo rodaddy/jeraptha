@@ -4,19 +4,17 @@
 
 | Hostname Pattern | Type | Default Namespace | Example |
 |-----------------|------|-------------------|---------|
-| `cc-*` | LXC container | `collab` | cc-king, cc-kevin, cc-geetesh |
-| `*.local` | Personal machine | `<caller_identity>` | Mini-M4-Pro.local, rodaddy-air-2.local |
+| `cc-*` | LXC container | `collab` | cc-king, cc-collaborator, cc-collab |
+| `*.local` | Personal machine | `<caller_identity>` | Mini-M4-Pro.local, <your-hostname>.local |
 | Other | Unknown | `<caller_identity>` | |
 
 ## Known Hosts
 
 | Hostname | Owner | Location |
 |----------|-------|----------|
-| `Mini-M4-Pro.local` | Rico | Local Mac Mini |
-| `rodaddy-air-2.local` | Rico/Skippy | MacBook Air |
-| `cc-king` | King (collab) | LXC 10.71.20.120 |
-| `cc-kevin` | Kevin | LXC 10.71.20.121 |
-| `cc-geetesh` | Geetesh | LXC 10.71.20.122 |
+| `Mini-M4-Pro.local` | User | Local Mac Mini |
+| `<your-hostname>.local` | User/Agent | MacBook Air |
+| `cc-project` | Collaborator | LXC <YOUR_IP> |
 
 ## Directory-Based Override (Personal Machines Only)
 
@@ -58,21 +56,21 @@ Result: `namespace = "collab"`
 
 ## Examples
 
-### Rico on local Mac, in ~/Development/king-trading
+### User on local Mac, in ~/Development/king-trading
 ```
 Host: Mini-M4-Pro.local (personal machine)
 CWD: king-trading (matches king*)
 -> namespace: "collab"
 ```
 
-### Rico on local Mac, in ~/Development/tax-strategy
+### User on local Mac, in ~/Development/tax-strategy
 ```
 Host: Mini-M4-Pro.local (personal machine)
 CWD: tax-strategy (no king match)
--> namespace: "rico"
+-> namespace: "<user_identity>"
 ```
 
-### Rico on local Mac, in ~/Development/tax-strategy, says "push this to collab"
+### User on local Mac, in ~/Development/tax-strategy, says "push this to collab"
 ```
 Host: Mini-M4-Pro.local (personal machine)
 CWD: tax-strategy (no king match)
@@ -80,30 +78,30 @@ Intent: "collab" override
 -> namespace: "collab" (intent wins)
 ```
 
-### Kevin on cc-kevin LXC, working on anything
+### a collaborator on cc-collaborator LXC, working on anything
 ```
-Host: cc-kevin (LXC)
+Host: cc-collaborator (LXC)
 -> namespace: "collab"
 ```
 
-### Kevin on cc-kevin LXC, says "save this to my brain"
+### a collaborator on cc-collaborator LXC, says "save this to my brain"
 ```
-Host: cc-kevin (LXC)
+Host: cc-collaborator (LXC)
 Intent: "my brain" -> personal override
--> namespace: "kevin" (intent wins)
+-> namespace: "collaborator" (intent wins)
 ```
 
-### Skippy on rodaddy-air-2.local, in ~/Development/open-brain
+### Skippy on <your-hostname>.local, in ~/Development/open-brain
 ```
-Host: rodaddy-air-2.local (personal machine)
+Host: <your-hostname>.local (personal machine)
 CWD: open-brain (no king match)
 Caller: skippy
 -> namespace: "skippy"
 ```
 
-### Skippy on rodaddy-air-2.local, says "this is for the team"
+### Skippy on <your-hostname>.local, says "this is for the team"
 ```
-Host: rodaddy-air-2.local (personal machine)
+Host: <your-hostname>.local (personal machine)
 Intent: "team" -> collab override
 -> namespace: "collab" (intent wins)
 ```

@@ -64,9 +64,9 @@ const handler = async (event: any) => {
       return {
         block: true,
         blockReason:
-          "OB GATE VIOLATION: You are about to ask Rico a factual question without checking Open Brain first. " +
+          "OB GATE VIOLATION: You are about to ask the operator a factual question without checking Open Brain first. " +
           "Run: ~/.local/bin/mcp2cli open-brain search_all --params '{\"query\": \"your question\"}' FIRST. " +
-          "If OB doesn't have the answer, THEN ask Rico and mention you checked.",
+          "If OB doesn't have the answer, THEN ask the operator and mention you checked.",
       };
     }
   }

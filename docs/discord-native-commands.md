@@ -150,6 +150,6 @@ for skill_md in glob.glob(f'{skills_dir}/**/SKILL.md', recursive=True):
 ## Rules for Skippy
 
 - Do NOT modify `commands.native`, `commands.nativeSkills`, or `commands.useAccessGroups`
-- Do NOT add `user-invocable: true` to skills without Rico's approval
+- Do NOT add `user-invocable: true` to skills without the admin's approval
 - Do NOT touch openclaw.json (carapace lock)
-- If a new native command is needed, ask Rico -- Claude Code handles the config
+- If a new native command is needed, ask the admin -- Claude Code handles the config
