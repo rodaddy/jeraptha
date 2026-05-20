@@ -74,6 +74,7 @@ export function resetPerTurnState(state) {
   state.skillConsultedThisTurn = false;
   state.contradictionCountThisTurn = 0;
   state.reviewPromisedThisTurn = false;
+  state.reviewAgentSpawned = false;
   state.prReviewContext = false;
   state.recentUserMessages = "";
   state.factualQuestionThisTurn = false;
