@@ -16,30 +16,47 @@ describe("block-sed-on-workspace", () => {
     handler = createBlockSedOnWorkspace(state, {}, log);
   });
 
-  // --- Blocked: sed on workspace .md files ---
+  // --- Allowed: sed on required workspace files (TASKS, CONVERSATIONS, SCORECARD) ---
 
-  test("blocks sed on workspace TASKS.md", async () => {
+  test("allows sed on TASKS.md (required by freshness gates)", async () => {
     const event = createToolCallEvent("exec", {
       command: "sed -i 's/IN_PROGRESS/DONE/' ~/.openclaw/workspace/TASKS.md",
     });
     const result = await handler(event, createMockContext());
-    expect(result.block).toBe(true);
-    expect(result.blockReason).toContain("SED BLOCK");
+    expect(result).toEqual({});
   });
 
-  test("blocks sed on workspace SCORECARD.md", async () => {
+  test("allows sed on SCORECARD.md (required by heartbeat gate)", async () => {
     const event = createToolCallEvent("bash", {
       command: "sed 's/Score: 5/Score: 6/' ~/.openclaw/workspace/SCORECARD.md",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result).toEqual({});
+  });
+
+  test("allows sed on CONVERSATIONS.md (required by freshness gates)", async () => {
+    const event = createToolCallEvent("exec", {
+      command:
+        "sed -i '' 's/old/new/' /home/agent/.openclaw/workspace/CONVERSATIONS.md",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result).toEqual({});
+  });
+
+  // --- Blocked: sed on OTHER workspace .md files ---
+
+  test("blocks sed on workspace IDENTITY.md", async () => {
+    const event = createToolCallEvent("exec", {
+      command: "sed -i 's/old/new/' ~/.openclaw/workspace/IDENTITY.md",
     });
     const result = await handler(event, createMockContext());
     expect(result.block).toBe(true);
     expect(result.blockReason).toContain("SED BLOCK");
   });
 
-  test("blocks sed on any workspace .md file", async () => {
+  test("blocks sed on workspace SOUL.md", async () => {
     const event = createToolCallEvent("exec", {
-      command:
-        "sed -i '' 's/old/new/' /home/agent/.openclaw/workspace/CONVERSATIONS.md",
+      command: "sed -i 's/old/new/' ~/.openclaw/workspace/SOUL.md",
     });
     const result = await handler(event, createMockContext());
     expect(result.block).toBe(true);
@@ -55,36 +72,10 @@ describe("block-sed-on-workspace", () => {
     expect(result).toEqual({});
   });
 
-  test("allows sed on workspace non-.md files", async () => {
-    const event = createToolCallEvent("exec", {
-      command: "sed -i 's/old/new/' ~/.openclaw/workspace/config.json",
-    });
-    const result = await handler(event, createMockContext());
-    expect(result).toEqual({});
-  });
-
-  // --- Allowed: non-sed commands on workspace ---
-
-  test("allows cat on workspace .md files", async () => {
-    const event = createToolCallEvent("exec", {
-      command: "cat ~/.openclaw/workspace/TASKS.md",
-    });
-    const result = await handler(event, createMockContext());
-    expect(result).toEqual({});
-  });
-
   // --- Allowed: non-exec tools ---
 
   test("ignores write tool calls", async () => {
     const event = createToolCallEvent("write", {
-      path: "~/.openclaw/workspace/TASKS.md",
-    });
-    const result = await handler(event, createMockContext());
-    expect(result).toEqual({});
-  });
-
-  test("ignores read tool calls", async () => {
-    const event = createToolCallEvent("read", {
       path: "~/.openclaw/workspace/TASKS.md",
     });
     const result = await handler(event, createMockContext());

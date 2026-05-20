@@ -6,6 +6,8 @@ export function createBlockSedOnWorkspace(state, config, log) {
     if (tn !== "exec" && tn !== "bash") return {};
 
     const cmd = getCommand(event.params);
+    // Allow sed on the files that other gates require agents to update
+    if (/TASKS\.md|CONVERSATIONS\.md|SCORECARD\.md/i.test(cmd)) return {};
     if (/\bsed\b/i.test(cmd) && /\.openclaw\/workspace\/.*\.md/i.test(cmd)) {
       log("BLOCKED no-sed-workspace: " + cmd.substring(0, 80));
       return {

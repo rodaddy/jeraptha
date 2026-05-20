@@ -32,7 +32,8 @@ export function createBlockDestructiveGitCommands(state, config, log) {
     if (
       /<<-?\s*'?[A-Z_]+'?/.test(cmd) &&
       /(?:cat\s*>|tee\s+\S|>>)/.test(cmd) &&
-      !/git\s+commit\s+-m\s+"\$\(cat\s+<</.test(cmd)
+      !/git\s+commit\s+-m\s+"\$\(cat\s+<</.test(cmd) &&
+      !/TASKS\.md|CONVERSATIONS\.md|SCORECARD\.md/i.test(cmd)
     ) {
       log("BLOCKED heredoc-write: " + cmd.substring(0, 80));
       return {
