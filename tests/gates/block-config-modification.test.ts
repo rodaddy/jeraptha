@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { createBlockConfigModification } from "../../plugin/gates/block-config-modification.js";
 import { createMockState } from "../_fixtures/create-mock-state.ts";
+import { createMockLogger } from "../_fixtures/create-mock-logger.ts";
 import {
   createToolCallEvent,
   createMockContext,
@@ -9,10 +10,11 @@ import {
 describe("block-config-modification", () => {
   let state: any;
   let handler: any;
-  const log = () => {};
+  let log: ReturnType<typeof createMockLogger>;
 
   beforeEach(() => {
     state = createMockState();
+    log = createMockLogger();
     handler = createBlockConfigModification(state, {}, log);
   });
 

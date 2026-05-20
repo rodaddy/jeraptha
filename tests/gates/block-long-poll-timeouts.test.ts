@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { createBlockLongPollTimeouts } from "../../plugin/gates/block-long-poll-timeouts.js";
 import { createMockState } from "../_fixtures/create-mock-state.ts";
+import { createMockLogger } from "../_fixtures/create-mock-logger.ts";
 import {
   createToolCallEvent,
   createMockContext,
@@ -10,10 +11,11 @@ import {
 describe("block-long-poll-timeouts", () => {
   let state: any;
   let handler: any;
-  const log = () => {};
+  let log: ReturnType<typeof createMockLogger>;
 
   beforeEach(() => {
     state = createMockState();
+    log = createMockLogger();
     handler = createBlockLongPollTimeouts(state, {}, log);
   });
 

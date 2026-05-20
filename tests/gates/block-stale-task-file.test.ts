@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { createBlockStaleTaskFile } from "../../plugin/gates/block-stale-task-file.js";
 import { createMockState } from "../_fixtures/create-mock-state.ts";
+import { createMockLogger } from "../_fixtures/create-mock-logger.ts";
 import {
   createToolCallEvent,
   createMockContext,
@@ -9,10 +10,11 @@ import {
 
 describe("block-stale-task-file", () => {
   let state: any, handler: any;
-  const log = () => {};
+  let log: ReturnType<typeof createMockLogger>;
 
   beforeEach(() => {
     state = createMockState({ currentTurn: 20, lastTasksWriteTurn: 0 });
+    log = createMockLogger();
     handler = createBlockStaleTaskFile(
       state,
       { taskFreshnessTurns: 10, gracePeriodTurns: 5 },

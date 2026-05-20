@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { createBlockWithoutSkillConsult } from "../../plugin/gates/block-without-skill-consult.js";
 import { createMockState } from "../_fixtures/create-mock-state.ts";
+import { createMockLogger } from "../_fixtures/create-mock-logger.ts";
 import {
   createToolCallEvent,
   createMockContext,
@@ -9,10 +10,11 @@ import {
 
 describe("block-without-skill-consult", () => {
   let state: any, handler: any;
-  const log = () => {};
+  let log: ReturnType<typeof createMockLogger>;
 
   beforeEach(() => {
     state = createMockState({ currentTurn: 10 });
+    log = createMockLogger();
     handler = createBlockWithoutSkillConsult(
       state,
       { gracePeriodTurns: 5 },

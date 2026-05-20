@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { createBlockWithoutSopSearch } from "../../plugin/gates/block-without-sop-search.js";
 import { createMockState } from "../_fixtures/create-mock-state.ts";
+import { createMockLogger } from "../_fixtures/create-mock-logger.ts";
 import {
   createToolCallEvent,
   createMockContext,
@@ -9,10 +10,11 @@ import {
 
 describe("block-without-sop-search", () => {
   let state: any, handler: any;
-  const log = () => {};
+  let log: ReturnType<typeof createMockLogger>;
 
   beforeEach(() => {
     state = createMockState();
+    log = createMockLogger();
     handler = createBlockWithoutSopSearch(state, {}, log);
   });
 

@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { createBlockSedOnWorkspace } from "../../plugin/gates/block-sed-on-workspace.js";
 import { createMockState } from "../_fixtures/create-mock-state.ts";
+import { createMockLogger } from "../_fixtures/create-mock-logger.ts";
 import {
   createToolCallEvent,
   createMockContext,
@@ -9,10 +10,11 @@ import {
 describe("block-sed-on-workspace", () => {
   let state: any;
   let handler: any;
-  const log = () => {};
+  let log: ReturnType<typeof createMockLogger>;
 
   beforeEach(() => {
     state = createMockState();
+    log = createMockLogger();
     handler = createBlockSedOnWorkspace(state, {}, log);
   });
 

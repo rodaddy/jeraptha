@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { createBlockSilentWorkStreak } from "../../plugin/gates/block-silent-work-streak.js";
 import { createMockState } from "../_fixtures/create-mock-state";
+import { createMockLogger } from "../_fixtures/create-mock-logger.ts";
 import {
   createToolCallEvent,
   createMockContext,
@@ -10,15 +11,13 @@ import {
 describe("block-silent-work-streak", () => {
   let state: ReturnType<typeof createMockState>;
   let config: Record<string, any>;
-  let logs: string[];
-  let log: (msg: string) => void;
+  let log: ReturnType<typeof createMockLogger>;
   let gate: ReturnType<typeof createBlockSilentWorkStreak>;
 
   beforeEach(() => {
     state = createMockState({ currentTurn: 10, toolCallsSinceMessage: 12 });
     config = { gracePeriodTurns: 5, commGateThreshold: 8 };
-    logs = [];
-    log = (msg: string) => logs.push(msg);
+    log = createMockLogger();
     gate = createBlockSilentWorkStreak(state, config, log);
   });
 

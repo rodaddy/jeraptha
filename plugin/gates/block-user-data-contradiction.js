@@ -12,17 +12,26 @@ export function createBlockUserDataContradiction(state, config, log) {
 
   return async (event, ctx) => {
     const tn = getToolName(event);
-    if (tn !== "message") return {};
+    if (tn !== "message") {
+      log.skip(tn, "not message");
+      return {};
+    }
 
     const botMessage = getMessageText(event.params);
-    if (!botMessage || botMessage.length < 10) return {};
+    if (!botMessage || botMessage.length < 10) {
+      log.skip(tn, "bot message too short");
+      return {};
+    }
 
     const messages = getMessages(event);
     const userMessages = [...messages]
       .reverse()
       .filter((m) => m.role === "user")
       .slice(0, 5);
-    if (userMessages.length === 0) return {};
+    if (userMessages.length === 0) {
+      log.skip(tn, "no user messages in history");
+      return {};
+    }
     const userMessage = userMessages
       .map((m) =>
         typeof m.content === "string"
@@ -30,7 +39,10 @@ export function createBlockUserDataContradiction(state, config, log) {
           : JSON.stringify(m.content || ""),
       )
       .join("\n---\n");
-    if (userMessage.length < 10) return {};
+    if (userMessage.length < 10) {
+      log.skip(tn, "user message too short");
+      return {};
+    }
 
     const prompt = `You are a fact-checking gate. Compare the user's most recent message against the bot's outgoing response.
 
@@ -45,6 +57,7 @@ Does the bot response contradict any specific facts, data, numbers, dates, or cl
 Return ONLY valid JSON: {"contradicts": true, "detail": "what was contradicted"} or {"contradicts": false, "detail": ""}`;
 
     try {
+      const startTime = Date.now();
       const response = await fetchFn(litellmUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -56,21 +69,23 @@ Return ONLY valid JSON: {"contradicts": true, "detail": "what was contradicted"}
         }),
         signal: AbortSignal.timeout(5000),
       });
+      const elapsed = Date.now() - startTime;
+      log.debug("LiteLLM response", {
+        tool: tn,
+        elapsed_ms: elapsed,
+        status: response.status,
+      });
 
       if (!response.ok) {
         state.contradictionGateFailures++;
         if (state.contradictionGateFailures > 5) {
-          log(
-            "contradiction-check: WARNING -- " +
-              state.contradictionGateFailures +
-              " consecutive failures",
-          );
+          log.warn("consecutive LiteLLM failures", {
+            count: state.contradictionGateFailures,
+          });
         }
-        log(
-          "contradiction-check: LiteLLM returned " +
-            response.status +
-            " -- fail-open",
-        );
+        log.warn("LiteLLM returned non-OK, fail-open", {
+          status: response.status,
+        });
         return {};
       }
 
@@ -104,7 +119,10 @@ Return ONLY valid JSON: {"contradicts": true, "detail": "what was contradicted"}
         }
       }
 
-      if (result.contradicts !== true) return {};
+      if (result.contradicts !== true) {
+        log.allow(tn, "no contradiction detected");
+        return {};
+      }
 
       state.contradictionGateFailures = 0;
       state.contradictionCountThisTurn++;
@@ -114,14 +132,14 @@ Return ONLY valid JSON: {"contradicts": true, "detail": "what was contradicted"}
         "unspecified contradiction. Re-read the user's recent messages for the data you need to verify against.";
 
       if (state.contradictionCountThisTurn === 1) {
-        log("BLOCKED contradiction-check (soft): " + detail);
+        log.block(tn, "soft contradiction: " + detail);
         return {
           block: true,
           blockReason: `CONTRADICTION CHECK: Your response contradicts data the user provided. Detail: "${detail}". Verify from 2+ independent sources before responding. Do NOT rely on a single lookup or computation. Cross-check against the user's actual data.`,
         };
       }
 
-      log("BLOCKED contradiction-check (hard): " + detail);
+      log.block(tn, "hard contradiction: " + detail);
       return {
         block: true,
         blockReason: `CONTRADICTION CHECK (HARD BLOCK): You contradicted user-provided data TWICE this turn. Detail: "${detail}". STOP. Re-read the user's message. List the facts they stated. Verify each one independently. Only respond when you can cite 2+ sources that agree.`,
@@ -129,17 +147,13 @@ Return ONLY valid JSON: {"contradicts": true, "detail": "what was contradicted"}
     } catch (err) {
       state.contradictionGateFailures++;
       if (state.contradictionGateFailures > 5) {
-        log(
-          "contradiction-check: WARNING -- " +
-            state.contradictionGateFailures +
-            " consecutive failures",
-        );
+        log.warn("consecutive LiteLLM failures", {
+          count: state.contradictionGateFailures,
+        });
       }
-      log(
-        "contradiction-check: fetch failed -- fail-open (" +
-          (err?.message || err) +
-          ")",
-      );
+      log.warn("fetch failed, fail-open", {
+        error: err?.message || String(err),
+      });
       return {};
     }
   };

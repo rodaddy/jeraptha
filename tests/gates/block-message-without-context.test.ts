@@ -4,6 +4,7 @@ import {
   createMockState,
   createActiveSessionState,
 } from "../_fixtures/create-mock-state";
+import { createMockLogger } from "../_fixtures/create-mock-logger.ts";
 import {
   createToolCallEvent,
   createMockContext,
@@ -13,15 +14,13 @@ import {
 describe("block-message-without-context", () => {
   let state: ReturnType<typeof createMockState>;
   let config: Record<string, any>;
-  let logs: string[];
-  let log: (msg: string) => void;
+  let log: ReturnType<typeof createMockLogger>;
   let gate: ReturnType<typeof createBlockMessageWithoutContext>;
 
   beforeEach(() => {
     state = createMockState({ currentTurn: 10 });
     config = { gracePeriodTurns: 5, commGateThreshold: 8 };
-    logs = [];
-    log = (msg: string) => logs.push(msg);
+    log = createMockLogger();
     gate = createBlockMessageWithoutContext(state, config, log);
   });
 

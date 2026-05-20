@@ -8,7 +8,10 @@ import {
 
 export function createBlockWithoutSopSearch(state, config, log) {
   return async (event, ctx) => {
-    if (isHeartbeatSession(ctx)) return {};
+    if (isHeartbeatSession(ctx)) {
+      log.skip("heartbeat", "heartbeat session");
+      return {};
+    }
     const tn = getToolName(event);
     const params = event.params || {};
 
@@ -19,6 +22,7 @@ export function createBlockWithoutSopSearch(state, config, log) {
         SOP_SEARCH_PATTERNS.some((p) => p.test(cmd))
       ) {
         state.sopSearchedThisTurn = true;
+        log.allow(tn, "SOP search executed");
         return {};
       }
     }
@@ -27,11 +31,12 @@ export function createBlockWithoutSopSearch(state, config, log) {
       SOP_SEARCH_PATTERNS.some((p) => p.test(params.query || ""))
     ) {
       state.sopSearchedThisTurn = true;
+      log.allow(tn, "SOP search via memory_search");
       return {};
     }
 
     if (tn === "sessions_spawn" && !state.sopSearchedThisTurn) {
-      log("BLOCKED sop-gate: agent spawn without SOP");
+      log.block(tn, "agent spawn without SOP search");
       return {
         block: true,
         blockReason:
@@ -55,7 +60,7 @@ export function createBlockWithoutSopSearch(state, config, log) {
         if (/drizzle/i.test(cmd)) taskType = "drizzle migration";
         if (/swarm/i.test(cmd)) taskType = "code swarm";
 
-        log("BLOCKED sop-gate: " + taskType + " without SOP");
+        log.block(tn, taskType + " without SOP search");
         return {
           block: true,
           blockReason: `SOP GATE: About to do ${taskType} without checking for an SOP. Run: ~/.local/bin/mcp2cli open-brain search_brain --params '{"query":"SOP ${taskType}","limit":5}' BEFORE proceeding. If an SOP exists, FOLLOW IT.`,
@@ -63,6 +68,7 @@ export function createBlockWithoutSopSearch(state, config, log) {
       }
     }
 
+    log.allow(tn, "SOP gate passed");
     return {};
   };
 }

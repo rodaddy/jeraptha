@@ -1,20 +1,18 @@
 import { describe, it, expect } from "bun:test";
 import { createResetPerTurnState } from "../../plugin/events/reset-per-turn-state.js";
 import { createMockState } from "../_fixtures/create-mock-state";
+import { createMockLogger } from "../_fixtures/create-mock-logger.ts";
 import {
   createMessageReceivedEvent,
   createMockContext,
 } from "../_fixtures/create-mock-event";
 
-const logs: string[] = [];
-const log = (msg: string) => logs.push(msg);
-
 function setup(stateOverrides?: Record<string, any>) {
-  logs.length = 0;
+  const log = createMockLogger();
   const state = createMockState(stateOverrides);
   const config = {};
   const handler = createResetPerTurnState(state, config, log);
-  return { state, handler };
+  return { state, handler, log };
 }
 
 describe("reset-per-turn-state", () => {

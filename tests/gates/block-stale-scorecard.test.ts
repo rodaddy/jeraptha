@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach, mock } from "bun:test";
 import { createMockState } from "../_fixtures/create-mock-state";
+import { createMockLogger } from "../_fixtures/create-mock-logger.ts";
 import {
   createToolCallEvent,
   createMockContext,
@@ -24,8 +25,7 @@ const { createBlockStaleScorecard } =
 describe("block-stale-scorecard", () => {
   let state: ReturnType<typeof createMockState>;
   let config: Record<string, any>;
-  let logs: string[];
-  let log: (msg: string) => void;
+  let log: ReturnType<typeof createMockLogger>;
   let gate: ReturnType<typeof createBlockStaleScorecard>;
 
   beforeEach(() => {
@@ -39,8 +39,7 @@ describe("block-stale-scorecard", () => {
       heartbeatIntervalMs: 10 * 60 * 1000,
       activeConversationMs: 5 * 60 * 1000,
     };
-    logs = [];
-    log = (msg: string) => logs.push(msg);
+    log = createMockLogger();
 
     // statSync returns stale mtime by default
     mockStatSync.mockImplementation(() => ({
@@ -79,7 +78,11 @@ describe("block-stale-scorecard", () => {
     const result = await gate(event, createMockContext());
 
     expect(result.block).toBeUndefined();
-    expect(logs.some((l) => l.includes("active conversation"))).toBe(true);
+    expect(
+      log.entries.some(
+        (e) => e.action === "skip" && e.reason?.includes("active conversation"),
+      ),
+    ).toBe(true);
   });
 
   test("grace period bypass", async () => {

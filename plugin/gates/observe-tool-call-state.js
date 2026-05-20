@@ -16,30 +16,29 @@ export function createObserveToolCallState(state, config, log) {
       if (/TASKS\.md/i.test(params.path)) {
         state.lastTasksWriteTurn = state.currentTurn;
         state.tasksReadThisSession = true;
-        log("state-tracker: TASKS.md write (turn " + state.currentTurn + ")");
+        log.info("TASKS.md write", { turn: state.currentTurn });
       }
       if (/SCORECARD\.md/i.test(params.path)) {
         state.lastScorecardWriteTime = Date.now();
-        log("state-tracker: SCORECARD.md write");
+        log.info("SCORECARD.md write");
       }
       if (/CONVERSATIONS\.md/i.test(params.path)) {
         state.lastConversationsWriteTurn = state.currentTurn;
         state.conversationsReadThisSession = true;
-        log(
-          "state-tracker: CONVERSATIONS.md write (turn " +
-            state.currentTurn +
-            ")",
-        );
+        log.info("CONVERSATIONS.md write", { turn: state.currentTurn });
       }
     }
 
     if (tn === "message") {
       state.toolCallsSinceMessage = 0;
-      log("state-tracker: message send (turn " + state.currentTurn + ")");
+      log.info("message send", { turn: state.currentTurn });
     }
 
     if ((tn === "exec" || tn === "bash") && !isComplianceExec(params)) {
       state.toolCallsSinceMessage++;
+      log.debug("tool call count incremented", {
+        toolCallsSinceMessage: state.toolCallsSinceMessage,
+      });
     }
 
     if (
@@ -67,7 +66,7 @@ export function createObserveToolCallState(state, config, log) {
     // Track review agent spawns for block-praise-without-review gate
     if (tn === "sessions_spawn" && state.prReviewContext) {
       state.reviewAgentSpawned = true;
-      log("state-tracker: review agent spawned during PR context");
+      log.info("review agent spawned during PR context");
     }
 
     return {};

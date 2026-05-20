@@ -20,16 +20,25 @@ export function createBlockPraiseWithoutReview(state, config, log) {
             : JSON.stringify(lastUser.content || "");
         if (PR_CONTEXT_PATTERNS.some((p) => p.test(userText))) {
           state.prReviewContext = true;
-          log("praise-gate: PR/review context detected");
+          log.info("PR/review context detected");
         }
       }
     }
 
-    if (!state.prReviewContext) return {};
-    if (tn !== "message") return {};
+    if (!state.prReviewContext) {
+      log.skip(tn, "no PR/review context");
+      return {};
+    }
+    if (tn !== "message") {
+      log.skip(tn, "not message tool in PR context");
+      return {};
+    }
 
     const botMessage = getMessageText(event.params);
-    if (!botMessage) return {};
+    if (!botMessage) {
+      log.skip(tn, "empty bot message");
+      return {};
+    }
 
     const hasPraise = PRAISE_WITHOUT_REVIEW.some((p) => p.test(botMessage));
     const hasCommitment = REVIEW_COMMITMENT.some((p) => p.test(botMessage));
@@ -38,12 +47,12 @@ export function createBlockPraiseWithoutReview(state, config, log) {
     if (!state.reviewPromisedThisTurn) {
       if (hasPraise && hasCommitment) {
         state.reviewPromisedThisTurn = true;
-        log("praise-gate: praise + review commitment accepted");
+        log.allow(tn, "praise + review commitment accepted");
         return {};
       }
 
       if (hasPraise && !hasCommitment) {
-        log("BLOCKED praise-gate: praise without review commitment");
+        log.block(tn, "praise without review commitment");
         return {
           block: true,
           blockReason:
@@ -52,17 +61,18 @@ export function createBlockPraiseWithoutReview(state, config, log) {
       }
 
       // Non-praise message (e.g., asking clarifying questions) -- allow
+      log.allow(tn, "non-praise response in PR context");
       return {};
     }
 
     // Review was promised — check if it happened
     if (state.reviewAgentSpawned) {
-      log("praise-gate: review agent confirmed, message allowed");
+      log.allow(tn, "review agent confirmed");
       return {};
     }
 
     // Promised but didn't follow through
-    log("BLOCKED praise-gate: review promised but no agent spawned");
+    log.block(tn, "review promised but no agent spawned");
     return {
       block: true,
       blockReason:

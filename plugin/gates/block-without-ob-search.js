@@ -8,7 +8,10 @@ import {
 
 export function createBlockWithoutObSearch(state, config, log) {
   return async (event, ctx) => {
-    if (isHeartbeatSession(ctx)) return {};
+    if (isHeartbeatSession(ctx)) {
+      log.skip("heartbeat", "heartbeat session");
+      return {};
+    }
     const tn = getToolName(event);
 
     if (tn === "exec" || tn === "bash") {
@@ -18,7 +21,7 @@ export function createBlockWithoutObSearch(state, config, log) {
           /["']query["']\s*:\s*["']\*["']/.test(cmd) ||
           /["']query["']\s*:\s*["']\s*["']/.test(cmd)
         ) {
-          log("BLOCKED ob-gate: bad OB query (wildcard or empty)");
+          log.block(tn, "bad OB query (wildcard or empty)");
           return {
             block: true,
             blockReason:
@@ -26,22 +29,27 @@ export function createBlockWithoutObSearch(state, config, log) {
           };
         }
         state.obQueriedThisTurn = true;
+        log.allow(tn, "OB search executed");
         return {};
       }
     }
     if (tn === "memory_search") {
       state.obQueriedThisTurn = true;
+      log.allow(tn, "memory_search counts as OB query");
       return {};
     }
 
     if (tn === "message") {
       const text = event.params?.text || event.params?.content || "";
-      if (EXEMPT_QUESTIONS.some((p) => p.test(text))) return {};
+      if (EXEMPT_QUESTIONS.some((p) => p.test(text))) {
+        log.allow(tn, "exempt question pattern");
+        return {};
+      }
       if (
         QUESTION_PATTERNS.some((p) => p.test(text)) &&
         !state.obQueriedThisTurn
       ) {
-        log("BLOCKED ob-gate: factual question without OB");
+        log.block(tn, "factual question without OB search");
         return {
           block: true,
           blockReason:
@@ -62,7 +70,9 @@ export function createBlockWithoutObSearch(state, config, log) {
           cmd,
         )
       ) {
-        log("BLOCKED ob-gate (search-before-read): " + cmd.substring(0, 80));
+        log.block(tn, "search-before-read without OB", {
+          cmd: cmd.substring(0, 80),
+        });
         return {
           block: true,
           blockReason:
@@ -71,6 +81,7 @@ export function createBlockWithoutObSearch(state, config, log) {
       }
     }
 
+    log.allow(tn, "OB gate passed");
     return {};
   };
 }

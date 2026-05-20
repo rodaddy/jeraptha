@@ -16,26 +16,23 @@ export function createBlockConfigModification(state, config, log) {
       if (HARD_BLOCKED_PATHS.some((p) => p.test(cmd))) {
         if (WRITE_INTENTS.test(cmd)) {
           if (/\bssh\s+/i.test(cmd)) {
-            log(
-              "ALLOWED no-self-surgery (cross-agent SSH): " +
-                cmd.substring(0, 80),
-            );
+            log.allow(tn, "cross-agent SSH to protected path");
             return {};
           }
           if (/\boc-channel\b/i.test(cmd)) {
-            log(
-              "ALLOWED no-self-surgery (oc-channel): " + cmd.substring(0, 80),
-            );
+            log.allow(tn, "oc-channel to protected path");
             return {};
           }
-          log("BLOCKED no-self-surgery (hard): " + cmd.substring(0, 60));
+          log.block(tn, "write to hard-blocked path", {
+            cmd: cmd.substring(0, 80),
+          });
           return {
             block: true,
             blockReason:
               "CARAPACE LOCK: Cannot modify own openclaw.json. Use oc-channel for channel management, or SSH for cross-agent fixes.",
           };
         }
-        log("ALLOWED no-self-surgery (read): " + cmd.substring(0, 60));
+        log.allow(tn, "read-only access to protected path");
       }
     }
 
@@ -44,7 +41,7 @@ export function createBlockConfigModification(state, config, log) {
       params?.path
     ) {
       if (HARD_BLOCKED_PATHS.some((p) => p.test(params.path))) {
-        log("BLOCKED no-self-surgery (hard): " + params.path);
+        log.block(tn, "write to hard-blocked path", { path: params.path });
         return {
           block: true,
           blockReason:
@@ -56,7 +53,7 @@ export function createBlockConfigModification(state, config, log) {
     if (tn === "exec" || tn === "bash") {
       const cmd = getCommand(params);
       if (APPROVAL_EXEC.some((p) => p.test(cmd))) {
-        log("APPROVAL no-self-surgery: " + cmd.substring(0, 60));
+        log.info("approval required", { tool: tn, cmd: cmd.substring(0, 80) });
         return {
           requireApproval: {
             title: "Protected Operation",
@@ -74,7 +71,7 @@ export function createBlockConfigModification(state, config, log) {
       params?.path
     ) {
       if (APPROVAL_PATHS.some((p) => p.test(params.path))) {
-        log("APPROVAL no-self-surgery: " + params.path);
+        log.info("approval required", { tool: tn, path: params.path });
         return {
           requireApproval: {
             title: "Protected File Edit",
@@ -87,6 +84,7 @@ export function createBlockConfigModification(state, config, log) {
       }
     }
 
+    log.allow(tn, "no protected paths matched");
     return {};
   };
 }

@@ -7,10 +7,14 @@ export function createInjectStalledTaskAlert(state, config, log) {
     try {
       tasksContent = readFileSync(TASKS_PATH, "utf-8");
     } catch {
+      log.skip("prompt-build", "TASKS.md not readable");
       return {};
     }
 
-    if (!tasksContent.includes("STALLED")) return {};
+    if (!tasksContent.includes("STALLED")) {
+      log.skip("prompt-build", "no STALLED tasks");
+      return {};
+    }
 
     const lines = tasksContent.split("\n");
     const stalled = [];
@@ -27,7 +31,7 @@ export function createInjectStalledTaskAlert(state, config, log) {
       }
     }
 
-    log("INJECTED task-stalled-alert");
+    log.info("injected stalled task alert", { stalledCount: stalled.length });
     return {
       appendSystemContext: `\nSTALLED TASK ALERT -- DROP EVERYTHING\n${stalled.join("\n")}\n\nAddress this IMMEDIATELY. Update TASKS.md with current status.`,
     };

@@ -1,20 +1,18 @@
 import { describe, it, expect } from "bun:test";
 import { createBlockPraiseWithoutReview } from "../../plugin/gates/block-praise-without-review.js";
 import { createMockState } from "../_fixtures/create-mock-state";
+import { createMockLogger } from "../_fixtures/create-mock-logger.ts";
 import {
   createToolCallEvent,
   createMockContext,
 } from "../_fixtures/create-mock-event";
 
-const logs: string[] = [];
-const log = (msg: string) => logs.push(msg);
-
 function setup(stateOverrides?: Record<string, any>) {
-  logs.length = 0;
+  const log = createMockLogger();
   const state = createMockState(stateOverrides);
   const config = {};
   const handler = createBlockPraiseWithoutReview(state, config, log);
-  return { state, handler };
+  return { state, handler, log };
 }
 
 function prEvent(botText: string, userText: string) {
@@ -90,7 +88,7 @@ describe("block-praise-without-review", () => {
   // 4. Second message after review agent = allowed
   // -------------------------------------------------------
   it("allows messages after review agent has been spawned", async () => {
-    const { handler } = setup({
+    const { handler, log } = setup({
       prReviewContext: true,
       reviewPromisedThisTurn: true,
       reviewAgentSpawned: true,
@@ -104,7 +102,11 @@ describe("block-praise-without-review", () => {
     const result = await handler(event, createMockContext());
 
     expect(result.block).toBeUndefined();
-    expect(logs.some((l) => l.includes("review agent confirmed"))).toBe(true);
+    expect(
+      log.entries.some(
+        (e) => e.action === "allow" && e.reason === "review agent confirmed",
+      ),
+    ).toBe(true);
   });
 
   // -------------------------------------------------------

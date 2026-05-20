@@ -1,21 +1,19 @@
 import { describe, it, expect } from "bun:test";
 import { createBreakBotToBotLoop } from "../../plugin/events/break-bot-to-bot-loop.js";
 import { createMockState } from "../_fixtures/create-mock-state";
+import { createMockLogger } from "../_fixtures/create-mock-logger.ts";
 import {
   createMessageSendingEvent,
   createMockContext,
 } from "../_fixtures/create-mock-event";
 import { BOT_BANTER_HOSTILE_MESSAGES } from "../../plugin/shared/constants.js";
 
-const logs: string[] = [];
-const log = (msg: string) => logs.push(msg);
-
 function setup(stateOverrides?: Record<string, any>) {
-  logs.length = 0;
+  const log = createMockLogger();
   const state = createMockState(stateOverrides);
   const config = {};
   const handler = createBreakBotToBotLoop(state, config, log);
-  return { state, handler };
+  return { state, handler, log };
 }
 
 describe("break-bot-to-bot-loop", () => {

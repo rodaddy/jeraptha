@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { createBlockUserDataContradiction } from "../../plugin/gates/block-user-data-contradiction.js";
 import { createMockState } from "../_fixtures/create-mock-state";
+import { createMockLogger } from "../_fixtures/create-mock-logger.ts";
 import {
   createToolCallEvent,
   createMockContext,
@@ -30,16 +31,13 @@ function makeNonOkFetch(status = 500) {
   });
 }
 
-const logs: string[] = [];
-const log = (msg: string) => logs.push(msg);
-
 describe("block-user-data-contradiction", () => {
   function setup(fetchFn: any, stateOverrides?: Record<string, any>) {
-    logs.length = 0;
+    const log = createMockLogger();
     const state = createMockState(stateOverrides);
     const config = { _fetch: fetchFn };
     const handler = createBlockUserDataContradiction(state, config, log);
-    return { state, handler };
+    return { state, handler, log };
   }
 
   // -------------------------------------------------------
@@ -143,7 +141,7 @@ describe("block-user-data-contradiction", () => {
   // 4. LiteLLM failure = fail-open
   // -------------------------------------------------------
   it("fails open when fetch throws an error", async () => {
-    const { handler } = setup(makeFailingFetch("ECONNREFUSED"));
+    const { handler, log } = setup(makeFailingFetch("ECONNREFUSED"));
 
     const event = createToolCallEvent(
       "message",
@@ -163,11 +161,15 @@ describe("block-user-data-contradiction", () => {
     const result = await handler(event, createMockContext());
 
     expect(result.block).toBeUndefined();
-    expect(logs.some((l) => l.includes("fail-open"))).toBe(true);
+    expect(
+      log.entries.some(
+        (e) => e.level === "WARN" && e.msg?.includes("fail-open"),
+      ),
+    ).toBe(true);
   });
 
   it("fails open when LiteLLM returns non-OK status", async () => {
-    const { handler } = setup(makeNonOkFetch(503));
+    const { handler, log } = setup(makeNonOkFetch(503));
 
     const event = createToolCallEvent(
       "message",
@@ -187,7 +189,9 @@ describe("block-user-data-contradiction", () => {
     const result = await handler(event, createMockContext());
 
     expect(result.block).toBeUndefined();
-    expect(logs.some((l) => l.includes("503"))).toBe(true);
+    expect(
+      log.entries.some((e) => e.level === "WARN" && e.status === 503),
+    ).toBe(true);
   });
 
   // -------------------------------------------------------

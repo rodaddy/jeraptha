@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach, mock } from "bun:test";
 import { createMockState } from "../_fixtures/create-mock-state";
+import { createMockLogger } from "../_fixtures/create-mock-logger.ts";
 import {
   createPromptBuildEvent,
   createMockContext,
@@ -21,15 +22,13 @@ const { createInjectSkillIndexPeriodically } =
 describe("inject-skill-index-periodically", () => {
   let state: ReturnType<typeof createMockState>;
   let config: Record<string, any>;
-  let logs: string[];
-  let log: (msg: string) => void;
+  let log: ReturnType<typeof createMockLogger>;
   let injection: ReturnType<typeof createInjectSkillIndexPeriodically>;
 
   beforeEach(() => {
     state = createMockState({ promptTurnCount: 0 });
     config = {};
-    logs = [];
-    log = (msg: string) => logs.push(msg);
+    log = createMockLogger();
     injection = createInjectSkillIndexPeriodically(state, config, log);
   });
 

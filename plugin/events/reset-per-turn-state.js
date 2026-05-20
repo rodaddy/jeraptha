@@ -32,11 +32,11 @@ export function createResetPerTurnState(state, config, log) {
 
       banter.count++;
       state.botBanterState.set(chKey, banter);
-      log("bot-banter: bot message #" + banter.count + " in channel " + chKey);
+      log.info("bot message received", { count: banter.count, channel: chKey });
     } else {
       state.botBanterState.clear();
       state.inboundIsBot = false;
-      log("bot-banter: human message -- all counters reset");
+      log.info("human message received, banter counters reset");
     }
   };
 }

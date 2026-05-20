@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { createBlockDestructiveGitCommands } from "../../plugin/gates/block-destructive-git-commands.js";
 import { createMockState } from "../_fixtures/create-mock-state.ts";
+import { createMockLogger } from "../_fixtures/create-mock-logger.ts";
 import {
   createToolCallEvent,
   createMockContext,
@@ -10,10 +11,11 @@ import {
 describe("block-destructive-git-commands", () => {
   let state: any;
   let handler: any;
-  const log = () => {};
+  let log: ReturnType<typeof createMockLogger>;
 
   beforeEach(() => {
     state = createMockState();
+    log = createMockLogger();
     handler = createBlockDestructiveGitCommands(state, {}, log);
   });
 

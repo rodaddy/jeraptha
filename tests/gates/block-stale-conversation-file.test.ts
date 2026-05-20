@@ -1,6 +1,7 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { createBlockStaleConversationFile } from "../../plugin/gates/block-stale-conversation-file.js";
 import { createMockState } from "../_fixtures/create-mock-state.ts";
+import { createMockLogger } from "../_fixtures/create-mock-logger.ts";
 import {
   createToolCallEvent,
   createMockContext,
@@ -9,10 +10,11 @@ import {
 
 describe("block-stale-conversation-file", () => {
   let state: any, handler: any;
-  const log = () => {};
+  let log: ReturnType<typeof createMockLogger>;
 
   beforeEach(() => {
     state = createMockState({ currentTurn: 25, lastConversationsWriteTurn: 0 });
+    log = createMockLogger();
     handler = createBlockStaleConversationFile(
       state,
       { conversationFreshnessTurns: 15, gracePeriodTurns: 5 },

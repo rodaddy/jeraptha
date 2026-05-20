@@ -7,13 +7,19 @@ import {
 
 export function createBlockDestructiveGitCommands(state, config, log) {
   return async (event, ctx) => {
-    if (isHeartbeatSession(ctx)) return {};
+    if (isHeartbeatSession(ctx)) {
+      log.skip("heartbeat", "heartbeat session");
+      return {};
+    }
     const tn = getToolName(event);
-    if (tn !== "exec" && tn !== "bash") return {};
+    if (tn !== "exec" && tn !== "bash") {
+      log.skip(tn, "not exec/bash");
+      return {};
+    }
 
     const cmd = getCommand(event.params);
     if (DESTRUCTIVE_GIT.some((p) => p.test(cmd))) {
-      log("BLOCKED no-destructive-git: " + cmd.substring(0, 80));
+      log.block(tn, "destructive git command", { cmd: cmd.substring(0, 80) });
       return {
         block: true,
         blockReason: `DESTRUCTIVE GIT BLOCK: "${cmd.substring(0, 80)}" can NEVER be run by an agent. This is a hard block with no override. Copy the command and run it yourself if needed.`,
@@ -21,7 +27,7 @@ export function createBlockDestructiveGitCommands(state, config, log) {
     }
 
     if (/\bcd\s+\S+\s*(&&|;)\s*git\b/i.test(cmd)) {
-      log("BLOCKED chain-command: " + cmd.substring(0, 80));
+      log.block(tn, "cd+git chain command", { cmd: cmd.substring(0, 80) });
       return {
         block: true,
         blockReason:
@@ -35,7 +41,7 @@ export function createBlockDestructiveGitCommands(state, config, log) {
       !/git\s+commit\s+-m\s+"\$\(cat\s+<</.test(cmd) &&
       !/TASKS\.md|CONVERSATIONS\.md|SCORECARD\.md/i.test(cmd)
     ) {
-      log("BLOCKED heredoc-write: " + cmd.substring(0, 80));
+      log.block(tn, "heredoc file write", { cmd: cmd.substring(0, 80) });
       return {
         block: true,
         blockReason:
@@ -43,6 +49,7 @@ export function createBlockDestructiveGitCommands(state, config, log) {
       };
     }
 
+    log.allow(tn, "safe git command");
     return {};
   };
 }
