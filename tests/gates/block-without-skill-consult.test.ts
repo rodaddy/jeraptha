@@ -1,0 +1,162 @@
+import { describe, test, expect, beforeEach } from "bun:test";
+import { createBlockWithoutSkillConsult } from "../../plugin/gates/block-without-skill-consult.js";
+import { createMockState } from "../_fixtures/create-mock-state.ts";
+import { createMockLogger } from "../_fixtures/create-mock-logger.ts";
+import {
+  createToolCallEvent,
+  createMockContext,
+  createHeartbeatContext,
+} from "../_fixtures/create-mock-event.ts";
+
+describe("block-without-skill-consult", () => {
+  let state: any, handler: any;
+  let log: ReturnType<typeof createMockLogger>;
+
+  beforeEach(() => {
+    state = createMockState({ currentTurn: 10 });
+    log = createMockLogger();
+    handler = createBlockWithoutSkillConsult(
+      state,
+      { gracePeriodTurns: 5 },
+      log,
+    );
+  });
+
+  test("blocks deploy command without skill consult", async () => {
+    const event = createToolCallEvent("exec", {
+      command: "deploy-service my-app",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("SKILL GATE");
+    expect(result.blockReason).toContain("deploy");
+  });
+
+  test("allows context file recovery command even when text mentions deploy", async () => {
+    const event = createToolCallEvent("exec", {
+      command:
+        "printf '%s\\n' 'checking deploy gate loop' > ~/.openclaw/workspace/TASKS.md",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBeUndefined();
+  });
+
+  test("allows SKILL-INDEX.md read command so the gate can be satisfied", async () => {
+    const event = createToolCallEvent("exec", {
+      command: "cat ~/.openclaw/workspace/SKILL-INDEX.md",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBeUndefined();
+  });
+
+  test("does not treat sed on SKILL-INDEX.md as a safe consult bypass", async () => {
+    const event = createToolCallEvent("exec", {
+      command:
+        "sed -n '1,120p' ~/.openclaw/workspace/SKILL-INDEX.md && docker compose up -d",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("infrastructure");
+  });
+
+  test("allows quoted-pipe rg search of SKILL-INDEX.md", async () => {
+    const event = createToolCallEvent("exec", {
+      command: "rg 'deploy|docker' ~/.openclaw/workspace/SKILL-INDEX.md",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBeUndefined();
+  });
+
+  test("blocks ops command that only mentions TASKS.md", async () => {
+    const event = createToolCallEvent("exec", {
+      command: "docker compose up -d # TASKS.md",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("infrastructure");
+  });
+
+  test("blocks mixed skill read and ops command", async () => {
+    const event = createToolCallEvent("exec", {
+      command:
+        "cat ~/.openclaw/workspace/SKILL-INDEX.md && docker compose up -d",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("infrastructure");
+  });
+
+  test("blocks command substitution in apparent skill read", async () => {
+    const event = createToolCallEvent("exec", {
+      command:
+        "cat $(docker compose up -d) ~/.openclaw/workspace/SKILL-INDEX.md",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("infrastructure");
+  });
+
+  test("blocks infrastructure command without skill consult", async () => {
+    const event = createToolCallEvent("bash", {
+      command: "docker compose up -d",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("infrastructure");
+  });
+
+  test("blocks swarm command without skill consult", async () => {
+    const event = createToolCallEvent("exec", { command: "run-swarm review" });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("code-swarm");
+  });
+
+  test("allows after skill consult", async () => {
+    state.skillConsultedThisTurn = true;
+    const event = createToolCallEvent("exec", {
+      command: "deploy-service my-app",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBeUndefined();
+  });
+
+  test("allows during grace period", async () => {
+    state.currentTurn = 3;
+    const event = createToolCallEvent("exec", {
+      command: "deploy-service my-app",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBeUndefined();
+  });
+
+  test("allows non-ops commands", async () => {
+    const event = createToolCallEvent("exec", { command: "cat src/index.ts" });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBeUndefined();
+  });
+
+  test("allows compliance exec", async () => {
+    const event = createToolCallEvent("exec", {
+      command: "mcp2cli deploy-tool check-status",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBeUndefined();
+  });
+
+  test("ignores non-exec tool types", async () => {
+    const event = createToolCallEvent("message", {
+      text: "let me deploy this",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBeUndefined();
+  });
+
+  test("bypasses all checks for heartbeat sessions", async () => {
+    const event = createToolCallEvent("exec", {
+      command: "deploy-service my-app",
+    });
+    const result = await handler(event, createHeartbeatContext());
+    expect(result.block).toBeUndefined();
+  });
+});

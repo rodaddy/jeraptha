@@ -1,0 +1,12 @@
+{
+  "name": "jeraptha",
+  "version": "3.1.1",
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "test:gates": "bun test tests/gates/",
+    "test:injections": "bun test tests/injections/",
+    "test:events": "bun test tests/events/",
+    "test:shared": "bun test tests/shared/"
+  }
+}

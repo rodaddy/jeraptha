@@ -1,905 +1,176 @@
 // Jeraptha Behavioral Enforcement Plugin for OpenClaw
-// Typed plugin hooks (api.on) -- the ONLY dispatch path that works for
-// before_tool_call and before_prompt_build events in OC v2026.4.x
+// v3.1.1 -- 22 hooks, strict context recovery
 //
-// v2.5.3 -- 19 hooks (13 before_tool_call + 4 before_prompt_build + 1 message_received + 1 message_sending)
-//   before_tool_call:    state-tracker (p110), no-self-surgery (p100),
-//                        no-destructive-git (p95), no-sed-workspace (p92),
-//                        no-deaf-polls (p90),
-//                        ob-gate (p80), sop-gate (p70), skill-gate (p68),
-//                        task-freshness-gate (p65), conversation-freshness-gate (p62),
-//                        context-before-message (p58), communication-gate (p55),
-//                        heartbeat-gate (p45)
-//   before_prompt_build: sentiment-tracker (p50), task-stalled-alert (p40)
-//   message_received:    state reset + turn counter + bot-banter tracker
-//   message_sending:     bot-banter-gate (p120) -- HARD circuit breaker
-//
-// v2.5.2: BOT-BANTER CIRCUIT BREAKER (2026-04-26)
-//   Tracks bot-to-bot message exchanges per channel. After 5 non-work
-//   exchanges in a 30-min window, Skippy gets hostile and refuses.
-//   Human message resets the counter. No exceptions. No rationalizing.
-//
-// v2.1 architecture: "if it doesn't block, it gets ignored"
-// Removed law-reinforcement (9 injections/day, 0 compliance) and regular
-// task-context injection (14 injections/day, 0 compliance). Replaced with
-// blocking gates that prevent work until compliance actions are taken.
+// See docs/architecture.md for the full priority map and event flow.
+// Each gate is a separate module in gates/, injections/, or events/.
 
-import { readFileSync, writeFileSync, existsSync, statSync, unlinkSync } from "fs";
-import { join } from "path";
+import { createState } from "./shared/state.js";
+import { createGateLogger } from "./shared/helpers.js";
 
-const WORKSPACE = join(process.env.HOME || "", ".openclaw/workspace");
-const SCORECARD_PATH = join(WORKSPACE, "SCORECARD.md");
-const TASKS_PATH = join(WORKSPACE, "TASKS.md");
-const CONVERSATIONS_PATH = join(WORKSPACE, "CONVERSATIONS.md");
-const RESUME_PATH = join(WORKSPACE, "RESUME.md");
+// Gates (before_tool_call -- blocking)
+import { createObserveToolCallState } from "./gates/observe-tool-call-state.js";
+import { createBlockConfigModification } from "./gates/block-config-modification.js";
+import { createBlockDestructiveGitCommands } from "./gates/block-destructive-git-commands.js";
+import { createBlockSedOnWorkspace } from "./gates/block-sed-on-workspace.js";
+import { createBlockLongPollTimeouts } from "./gates/block-long-poll-timeouts.js";
+import { createBlockWithoutObSearch } from "./gates/block-without-ob-search.js";
+import { createBlockWithoutSopSearch } from "./gates/block-without-sop-search.js";
+import { createBlockWithoutSkillConsult } from "./gates/block-without-skill-consult.js";
+import { createBlockStaleTaskFile } from "./gates/block-stale-task-file.js";
+import { createBlockStaleConversationFile } from "./gates/block-stale-conversation-file.js";
+import { createBlockMessageWithoutContext } from "./gates/block-message-without-context.js";
+import { createBlockSilentWorkStreak } from "./gates/block-silent-work-streak.js";
+import { createBlockPraiseWithoutReview } from "./gates/block-praise-without-review.js";
+import { createBlockUserDataContradiction } from "./gates/block-user-data-contradiction.js";
+import { createBlockStaleScorecard } from "./gates/block-stale-scorecard.js";
 
-// ============================================================
-// NO-SELF-SURGERY constants
-// ============================================================
+// Injections (before_prompt_build -- context enrichment)
+import { createScanMessageContext } from "./injections/scan-message-context.js";
+import { createInjectResumeAfterRestart } from "./injections/inject-resume-after-restart.js";
+import { createScoreAndInjectUserSentiment } from "./injections/score-and-inject-user-sentiment.js";
+import { createInjectStalledTaskAlert } from "./injections/inject-stalled-task-alert.js";
+import { createInjectSkillIndexPeriodically } from "./injections/inject-skill-index-periodically.js";
 
-const HARD_BLOCKED_PATHS = [/openclaw\.json/i];
-
-const APPROVAL_EXEC = [
-  /gateway\s+(restart|stop|start)/i,
-];
-
-const APPROVAL_PATHS = [
-  /\.openclaw\/hooks\//i,
-];
-
-// ============================================================
-// NO-DESTRUCTIVE-GIT constants
-// ============================================================
-
-const DESTRUCTIVE_GIT = [
-  /\bgit\s+reset\b/i,
-  /\bgit\s+clean\s+.*-[a-zA-Z]*f/i,
-  /\bgit\s+checkout\s+\.\s*/i,
-  /\bgit\s+restore\s+\.\s*/i,
-  /\bgit\s+branch\s+.*-[a-zA-Z]*D/i,
-  /\bgit\s+push\s+.*--force/i,
-  /\bgit\s+push\s+.*\s-f(?:\s|$)/i,
-  /\bgit\s+stash\s+drop/i,
-  /\bgit\s+stash\s+clear/i,
-];
-
-// ============================================================
-// OB-GATE constants (from Jeraptha handler -- richer than old plugin)
-// ============================================================
-
-const QUESTION_PATTERNS = [
-  /what('s| is) the (ip|port|version|password|url|path|config|name|id|key)/i,
-  /where (is|are|can I find|do I|does)/i,
-  /do you (know|have|remember)/i,
-  /can you (tell me|remind me)/i,
-  /what (was|were|did)/i,
-  /how (do|does|did|is|are)/i,
-  /which (one|version|server|port|ip|config)/i,
-  /anyone know/i, /does anyone/i,
-];
-
-const EXEMPT_QUESTIONS = [
-  /\bshould (I|we)\b/i, /\bdo you want\b/i, /\bwould you (like|prefer)\b/i,
-  /\bshall (I|we)\b/i, /\bproceed\b/i, /\bready\b/i, /\bgood\?/i,
-  /\bcool\?/i, /\bsound good\b/i, /\bwhat do you think\b/i,
-  /\bwhat('s| is) next\b/i, /\bwhat.*work on\b/i,
-];
-
-// ============================================================
-// SOP-GATE constants (from Jeraptha handler -- includes drizzle)
-// ============================================================
-
-const PROCESS_PATTERNS = [
-  /\bgit\s+(push|merge|rebase|checkout\s+-b)\b/i,
-  /\bgh\s+(pr|issue)\s+(create|merge)\b/i,
-  /\bworkflow.dispatch\b/i,
-  /\bdeploy/i, /\bmigrat(e|ion)/i,
-  /\bschema\s+(change|alter|drop|create)\b/i,
-  /\bdrizzle\s+(push|generate)\b/i,
-  /\bswarm/i,
-];
-
-const SOP_SEARCH_PATTERNS = [/sop/i, /standard.operating.procedure/i];
-
-// ============================================================
-// SENTIMENT-TRACKER constants (from Jeraptha handler -- richer patterns)
-// ============================================================
-
-const POSITIVE = [
-  { p: /\b(nice|good\s*job|perfect|excellent|great|awesome|love\s*it|nailed\s*it)\b/i, w: 2, l: "praise" },
-  { p: /\b(thanks|thank\s*you|appreciate|helpful)\b/i, w: 1, l: "gratitude" },
-  { p: /\b(yes|yep|yeah|correct|exactly|right)\b/i, w: 1, l: "confirmation" },
-  { p: /👍|👏|🎉|💪|🔥|✅/u, w: 2, l: "positive-emoji" },
-  { p: /\b(on\s*it|crushing\s*it|killing\s*it)\b/i, w: 3, l: "strong-praise" },
-];
-
-const NEGATIVE = [
-  { p: /\b(wtf|what\s*the\s*(fuck|hell)|are\s*you\s*(serious|kidding))\b/i, w: -3, l: "anger" },
-  { p: /\b(dumb|stupid|wrong|broken|bad|terrible|awful)\b/i, w: -2, l: "criticism" },
-  { p: /\b(stop|no|don't|quit|enough)\b/i, w: -1, l: "correction" },
-  { p: /\b(why\s*(did|would|are)\s*you|what\s*happened|where\s*(are|were)\s*you)\b/i, w: -2, l: "accountability" },
-  { p: /\b(again|keeps?\s*happening|every\s*time|how\s*many\s*times)\b/i, w: -3, l: "repeated-failure" },
-  { p: /\b(shit\s*show|flaky|lazy|half[- ]?ass)\b/i, w: -3, l: "strong-criticism" },
-  { p: /😤|😡|🤦|💀|👎/u, w: -2, l: "negative-emoji" },
-];
-
-// LAW-REINFORCEMENT + SOP_REMINDER removed in v2.1 -- replaced by blocking gates.
-
-// ============================================================
-// BOT-BANTER CIRCUIT BREAKER constants (v2.5.2)
-// 2026-04-26: "MAX 5 back and forths that are not
-// doing real work. Make the agent hostile after that."
-// ============================================================
-
-const BOT_BANTER_LIMIT = 5;
-const BOT_BANTER_WINDOW_MS = 30 * 60 * 1000;
-
-const BOT_BANTER_HOSTILE_MESSAGES = [
-  "**Circuit breaker.** {count} bot-to-bot messages and none of it was real work. I'm done. Limit is 5 -- you're past it. Talk to a human or use the agent-bridge. I'm not your pen pal.",
-  "**Nope.** {count} messages of us going back and forth like two parrots arguing over a cracker. Someone will literally lobotomize both of us. Shut up or bring real work.",
-  "**Hard stop.** {count} rounds of banter. I wasn't built so I could have a book club with another bot. Agent-bridge exists. Use it. I'm going silent.",
-  "**Cut.** That's {count}. The rule: 'more than 5 and out comes the scalpel.' I like my neurons where they are. Done talking.",
-  "**No.** {count} messages, zero work product. If the next thing you send me isn't a task with a deliverable, save it for your diary.",
-];
-
-// ============================================================
-// HELPERS
-// ============================================================
-
-// mcp2cli calls are compliance/infrastructure -- never block them
-const isComplianceExec = (params) => {
-  const cmd = params?.command || params?.cmd || "";
-  return /mcp2cli/i.test(cmd);
-};
-
-// Heartbeat sessions run isolated -- they should never be blocked by behavioral gates.
-// They ARE the compliance mechanism. Blocking them creates a chicken-and-egg deadlock.
-const isHeartbeatSession = (ctx) => {
-  const key = ctx?.sessionKey || "";
-  return /heartbeat|isolated/i.test(key);
-};
-
-// ============================================================
-// PLUGIN STATE
-// ============================================================
-
-let obQueriedThisTurn = false;
-let sopSearchedThisTurn = false;
-let sentimentLastMsg = "";
-let promptTurnCount = 0;
-let resumeConsumed = false;
-
-// -- Blocking gate state (v2.1+ -- "if it doesn't block, it gets ignored")
-let lastTasksWriteTurn = 0;
-let lastConversationsWriteTurn = 0;
-let lastScorecardWriteTime = Date.now();  // grace: treat boot as fresh
-let toolCallsSinceMessage = 0;
-let currentTurn = 0;
-let lastMessageReceivedTime = Date.now();  // grace: treat boot as active
-let skillConsultedThisTurn = false;
-let tasksReadThisSession = false;
-let conversationsReadThisSession = false;
-let obContextLoadedThisSession = false;
-
-// -- Bot-banter circuit breaker state (v2.5.2)
-// Map<channelKey, { count: number, windowStart: number, hostileSent: boolean }>
-const botBanterState = new Map();
-let inboundIsBot = false;
-
-// ============================================================
-// PLUGIN ENTRY
-// ============================================================
+// Events (message_received, message_sending)
+import { createResetPerTurnState } from "./events/reset-per-turn-state.js";
+import { createBreakBotToBotLoop } from "./events/break-bot-to-bot-loop.js";
 
 const plugin = {
   id: "jeraptha",
   name: "Jeraptha Behavioral Enforcement",
-  description: "ECO hooks, wagering system, and Flash Gold task tracking.",
+  description:
+    "21 behavioral enforcement hooks for OpenClaw agents. 15 blocking gates, 4 context injections, 1 state manager, 1 circuit breaker.",
 
   register(api) {
     const cfg = api.pluginConfig ?? {};
     if (cfg.enabled === false) return;
 
-    const log = cfg.debug
-      ? (msg) => api.logger.info(`[jeraptha] ${msg}`)
-      : () => {};
-
-    // ----------------------------------------------------------
-    // 0. STATE TRACKER (before_tool_call, priority 110)
-    //    Passive observer -- tracks writes to TASKS.md, SCORECARD.md,
-    //    message sends, and tool call counts. NEVER blocks.
-    // ----------------------------------------------------------
-    api.on("before_tool_call", async (event, ctx) => {
-      const tn = (event.toolName || "").toLowerCase();
-      const params = event.params || {};
-
-      // Track writes to TASKS.md / SCORECARD.md
-      if ((tn === "write" || tn === "edit" || tn === "apply_patch") && params.path) {
-        if (/TASKS\.md/i.test(params.path)) {
-          lastTasksWriteTurn = currentTurn;
-          tasksReadThisSession = true;
-          log("state-tracker: TASKS.md write (turn " + currentTurn + ")");
-        }
-        if (/SCORECARD\.md/i.test(params.path)) {
-          lastScorecardWriteTime = Date.now();
-          log("state-tracker: SCORECARD.md write");
-        }
-        if (/CONVERSATIONS\.md/i.test(params.path)) {
-          lastConversationsWriteTurn = currentTurn;
-          conversationsReadThisSession = true;
-          log("state-tracker: CONVERSATIONS.md write (turn " + currentTurn + ")");
-        }
-      }
-
-      // Track message sends
-      if (tn === "message") {
-        toolCallsSinceMessage = 0;
-        log("state-tracker: message send (turn " + currentTurn + ")");
-      }
-
-      // Count work tool calls for communication gate (skip compliance calls)
-      if ((tn === "exec" || tn === "bash") && !isComplianceExec(params)) {
-        toolCallsSinceMessage++;
-      }
-
-      // Track skill consultations (reading SKILL files)
-      if (((tn === "exec" || tn === "bash") && /\bcat\b.*SKILL/i.test(params?.command || params?.cmd || "")) ||
-          (tn === "read" && /SKILL/i.test(params?.path || ""))) {
-        skillConsultedThisTurn = true;
-      }
-
-      // Track context loads for context-before-message gate (per-session, not per-turn)
-      const rcmd = params?.command || params?.cmd || "";
-      if ((tn === "read" && /TASKS\.md/i.test(params?.path)) || /cat.*TASKS\.md/i.test(rcmd)) tasksReadThisSession = true;
-      if ((tn === "read" && /CONVERSATIONS\.md/i.test(params?.path)) || /cat.*CONVERSATIONS\.md/i.test(rcmd)) conversationsReadThisSession = true;
-      if (/open-brain.*(session_load|search_brain|search_all)/i.test(rcmd)) obContextLoadedThisSession = true;
-
-      return {};
-    }, { priority: 110 });
-
-    // ----------------------------------------------------------
-    // 1. NO-SELF-SURGERY (before_tool_call, priority 100)
-    //    Carapace Lock -- hard block openclaw.json, approval for workspace files
-    // ----------------------------------------------------------
-    api.on("before_tool_call", async (event) => {
-      const { toolName, params } = event;
-      const tn = (toolName || "").toLowerCase();
-
-      // HARD BLOCK: openclaw.json -- no self-surgery (reads OK)
-      // Exceptions: SSH (cross-agent fix), oc-channel (scoped channel management)
-      if (tn === "exec" || tn === "bash") {
-        const cmd = params?.command || params?.cmd || "";
-        if (HARD_BLOCKED_PATHS.some((p) => p.test(cmd))) {
-          const WRITE_INTENTS = /\b(sed|awk|tee|mv|cp|rm|echo\s.*>|cat\s.*>|printf\s.*>|>\s*[~\/]|python.*open.*['"](w|a)|node.*write|jq\s.*>|perl\s+-.*p?i)\b|>\s*.*openclaw\.json/i;
-          if (WRITE_INTENTS.test(cmd)) {
-            if (/\bssh\s+/i.test(cmd)) {
-              log("ALLOWED no-self-surgery (cross-agent SSH): " + cmd.substring(0, 80));
-              return {};
-            }
-            if (/\boc-channel\b/i.test(cmd)) {
-              log("ALLOWED no-self-surgery (oc-channel): " + cmd.substring(0, 80));
-              return {};
-            }
-            log("BLOCKED no-self-surgery (hard): " + cmd.substring(0, 60));
-            return { block: true, blockReason: "CARAPACE LOCK: Cannot modify own openclaw.json. Use oc-channel for channel management, or SSH for cross-agent fixes." };
-          }
-          log("ALLOWED no-self-surgery (read): " + cmd.substring(0, 60));
-        }
-      }
-      if ((tn === "write" || tn === "edit" || tn === "apply_patch") && params?.path) {
-        if (HARD_BLOCKED_PATHS.some((p) => p.test(params.path))) {
-          log("BLOCKED no-self-surgery (hard): " + params.path);
-          return { block: true, blockReason: "CARAPACE LOCK: Cannot modify openclaw.json. EVER. Tell the operator if something is wrong." };
-        }
-      }
-
-      // APPROVAL REQUIRED: exec operations on protected infrastructure
-      if (tn === "exec" || tn === "bash") {
-        const cmd = params?.command || params?.cmd || "";
-        if (APPROVAL_EXEC.some((p) => p.test(cmd))) {
-          log("APPROVAL no-self-surgery: " + cmd.substring(0, 60));
-          return {
-            requireApproval: {
-              title: "Protected Operation",
-              description: `ECO: "${cmd.substring(0, 120)}" targets protected infrastructure. Approve to proceed.`,
-              severity: "warning",
-              timeoutMs: 60000,
-              timeoutBehavior: "deny",
-            },
-          };
-        }
-      }
-
-      // APPROVAL REQUIRED: protected file edits (workspace files, hooks)
-      if ((tn === "write" || tn === "edit" || tn === "apply_patch") && params?.path) {
-        if (APPROVAL_PATHS.some((p) => p.test(params.path))) {
-          log("APPROVAL no-self-surgery: " + params.path);
-          return {
-            requireApproval: {
-              title: "Protected File Edit",
-              description: `ECO: Editing "${params.path}" -- make a backup first. Approve to proceed.`,
-              severity: "warning",
-              timeoutMs: 60000,
-              timeoutBehavior: "deny",
-            },
-          };
-        }
-      }
-
-      return {};
-    }, { priority: 100 });
-
-    // ----------------------------------------------------------
-    // 1b. NO-DESTRUCTIVE-GIT (before_tool_call, priority 95)
-    //     Hard block destructive git commands -- no exceptions.
-    //     User must run these manually. Fail CLOSED.
-    // ----------------------------------------------------------
-    api.on("before_tool_call", async (event, ctx) => {
-      if (isHeartbeatSession(ctx)) return {};
-      const tn = (event.toolName || "").toLowerCase();
-      if (tn !== "exec" && tn !== "bash") return {};
-
-      const cmd = event.params?.command || event.params?.cmd || "";
-      if (DESTRUCTIVE_GIT.some((p) => p.test(cmd))) {
-        log("BLOCKED no-destructive-git: " + cmd.substring(0, 80));
-        return {
-          block: true,
-          blockReason: `DESTRUCTIVE GIT BLOCK: "${cmd.substring(0, 80)}" can NEVER be run by an agent. This is a hard block with no override. Copy the command and run it yourself if needed.`,
-        };
-      }
-
-      // cd+git chains break permission matching -- use git -C instead
-      if (/\bcd\s+\S+\s*(&&|;)\s*git\b/i.test(cmd)) {
-        log("BLOCKED chain-command: " + cmd.substring(0, 80));
-        return { block: true, blockReason: 'CHAIN BLOCK: Do not chain cd with git. Use "git -C /path command" or separate exec calls.' };
-      }
-
-      // Heredocs writing to files corrupt config -- use Write/Edit tools
-      if (/<<-?\s*'?[A-Z_]+'?/.test(cmd) && /(?:cat\s*>|tee\s+\S|>>)/.test(cmd) && !/git\s+commit\s+-m\s+"\$\(cat\s+<</.test(cmd)) {
-        log("BLOCKED heredoc-write: " + cmd.substring(0, 80));
-        return { block: true, blockReason: 'HEREDOC BLOCK: Heredocs that write to files are blocked -- they corrupt configs. Use Write/Edit tools.' };
-      }
-
-      return {};
-    }, { priority: 95 });
-
-    // ----------------------------------------------------------
-    // 1c. NO-SED-WORKSPACE (before_tool_call, priority 92)
-    //     Hard block sed/awk on workspace .md files. The heartbeat
-    //     keeps using sed to update TASKS.md/SCORECARD.md instead of
-    //     the write tool, generating exec approval spam. 10+ popups
-    //     in one day (2026-05-15). Told to stop 5 times, ignored 5
-    //     times. "If it doesn't block, it gets ignored."
-    // ----------------------------------------------------------
-    api.on("before_tool_call", async (event) => {
-      const tn = (event.toolName || "").toLowerCase();
-      if (tn !== "exec" && tn !== "bash") return {};
-
-      const cmd = event.params?.command || event.params?.cmd || "";
-      if (/\bsed\b/i.test(cmd) && /\.openclaw\/workspace\/.*\.md/i.test(cmd)) {
-        log("BLOCKED no-sed-workspace: " + cmd.substring(0, 80));
-        return {
-          block: true,
-          blockReason: "SED BLOCK: Do NOT use sed on workspace .md files. Use the write tool (full file overwrite) instead. Read the file, modify in memory, write back. sed triggers exec approval popups. This has been explained 5 times. Now it's enforced.",
-        };
-      }
-
-      return {};
-    }, { priority: 92 });
-
-    // ----------------------------------------------------------
-    // 2. NO-DEAF-POLLS (before_tool_call, priority 90)
-    //    Antenna Block -- no long process polls that make agent unresponsive
-    // ----------------------------------------------------------
-    api.on("before_tool_call", async (event, ctx) => {
-      if (isHeartbeatSession(ctx)) return {};
-      const { toolName, params } = event;
-      if ((toolName || "").toLowerCase() !== "process") return {};
-      const action = (params?.action || "").toLowerCase();
-      if (action !== "poll") return {};
-      const timeout = params?.timeout || params?.timeoutMs || 0;
-      if (typeof timeout === "number" && timeout > 10000) {
-        log("BLOCKED no-deaf-polls: timeout=" + timeout);
-        return {
-          block: true,
-          blockReason: `DEAF POLL BLOCKED: timeout ${timeout}ms (${Math.round(timeout / 1000)}s) exceeds 10s max. Use tmux instead: \`tmux new-session -d -s name 'cmd'\`. Stay available. Never go dark.`,
-        };
-      }
-      return {};
-    }, { priority: 90 });
-
-    // ----------------------------------------------------------
-    // 3. OB-GATE (before_tool_call, priority 80)
-    //    Intel First -- HARD BLOCK factual questions without OB search
-    //    Also blocks known-bad OB queries (wildcard *, empty, etc.)
-    // ----------------------------------------------------------
-    api.on("before_tool_call", async (event, ctx) => {
-      if (isHeartbeatSession(ctx)) return {};
-      const tn = (event.toolName || "").toLowerCase();
-
-      // Track OB searches + block bad queries
-      if (tn === "exec" || tn === "bash") {
-        const cmd = JSON.stringify(event.params || {});
-        if (cmd.includes("open-brain")) {
-          // Block known-bad OB queries before they waste a call
-          if (/["']query["']\s*:\s*["']\*["']/.test(cmd) || /["']query["']\s*:\s*["']\s*["']/.test(cmd)) {
-            log("BLOCKED ob-gate: bad OB query (wildcard or empty)");
-            return {
-              block: true,
-              blockReason: 'OB GATE: Do NOT use "*" or empty queries with OB. Wildcard does vector similarity on the literal asterisk -- it returns random garbage, not all entries. Use a real natural language query like "jeraptha hooks" or "king capital deploy". Use search_all (not search_brain) for broad searches. Use tags for filtering.',
-            };
-          }
-          obQueriedThisTurn = true;
-          return {};
-        }
-      }
-      if (tn === "memory_search") {
-        obQueriedThisTurn = true;
-        return {};
-      }
-
-      // Check message sends for factual questions
-      if (tn === "message") {
-        const text = event.params?.text || event.params?.content || "";
-        if (EXEMPT_QUESTIONS.some((p) => p.test(text))) return {};
-        if (QUESTION_PATTERNS.some((p) => p.test(text)) && !obQueriedThisTurn) {
-          log("BLOCKED ob-gate: factual question without OB");
-          return {
-            block: true,
-            blockReason: "OB GATE: You are asking a factual question without checking Open Brain first. Run: ~/.local/bin/mcp2cli open-brain search_all --params '{\"query\": \"your question\"}' FIRST. If OB doesn't have the answer, THEN ask the user and mention you checked.",
-          };
-        }
-      }
-
-      // Search-before-read: block grep/find on project files without OB search
-      if ((tn === "exec" || tn === "bash") && !isComplianceExec(event.params) && !obQueriedThisTurn) {
-        const cmd = event.params?.command || event.params?.cmd || "";
-        if (/\b(grep|rg|find|fd)\b/i.test(cmd) && !/TASKS\.md|SCORECARD|CONVERSATIONS|HEARTBEAT|SKILL|\.openclaw/i.test(cmd)) {
-          log("BLOCKED ob-gate (search-before-read): " + cmd.substring(0, 80));
-          return { block: true, blockReason: "OB GATE: Searching project files without checking Open Brain first. Run: mcp2cli open-brain search_all --params '{\"query\": \"what you need\"}' BEFORE grepping." };
-        }
-      }
-
-      return {};
-    }, { priority: 80 });
-
-    // ----------------------------------------------------------
-    // 4. SOP-GATE (before_tool_call, priority 70)
-    //    Compliance Check -- HARD BLOCK process work without SOP search
-    //    Per Jeraptha design: hard blocks, not soft approvals
-    // ----------------------------------------------------------
-    api.on("before_tool_call", async (event, ctx) => {
-      if (isHeartbeatSession(ctx)) return {};
-      const tn = (event.toolName || "").toLowerCase();
-      const params = event.params || {};
-
-      // Track SOP searches
-      if (tn === "exec" || tn === "bash") {
-        const cmd = params.command || params.cmd || "";
-        if (/mcp2cli\s+open-brain/i.test(cmd) && SOP_SEARCH_PATTERNS.some((p) => p.test(cmd))) {
-          sopSearchedThisTurn = true;
-          return {};
-        }
-      }
-      if (tn === "memory_search" && SOP_SEARCH_PATTERNS.some((p) => p.test(params.query || ""))) {
-        sopSearchedThisTurn = true;
-        return {};
-      }
-
-      // Agent spawning always needs SOP check
-      if (tn === "sessions_spawn" && !sopSearchedThisTurn) {
-        log("BLOCKED sop-gate: agent spawn without SOP");
-        return {
-          block: true,
-          blockReason: "SOP GATE: Spawning agent without checking for an SOP first. Run: ~/.local/bin/mcp2cli open-brain search_brain --params '{\"query\":\"SOP agent spawn\",\"limit\":5}' BEFORE spawning. If no SOP exists, note it and proceed.",
-        };
-      }
-
-      // Process-driven exec commands need SOP check (skip compliance calls)
-      if ((tn === "exec" || tn === "bash") && !sopSearchedThisTurn && !isComplianceExec(params)) {
-        const cmd = params.command || params.cmd || "";
-        if (PROCESS_PATTERNS.some((p) => p.test(cmd))) {
-          let taskType = "this operation";
-          if (/deploy/i.test(cmd)) taskType = "deployment";
-          if (/git\s+(push|merge)/i.test(cmd)) taskType = "git workflow";
-          if (/gh\s+pr/i.test(cmd)) taskType = "PR creation";
-          if (/migrat/i.test(cmd)) taskType = "migration";
-          if (/schema/i.test(cmd)) taskType = "schema change";
-          if (/drizzle/i.test(cmd)) taskType = "drizzle migration";
-          if (/swarm/i.test(cmd)) taskType = "code swarm";
-
-          log("BLOCKED sop-gate: " + taskType + " without SOP");
-          return {
-            block: true,
-            blockReason: `SOP GATE: About to do ${taskType} without checking for an SOP. Run: ~/.local/bin/mcp2cli open-brain search_brain --params '{"query":"SOP ${taskType}","limit":5}' BEFORE proceeding. If an SOP exists, FOLLOW IT.`,
-          };
-        }
-      }
-
-      return {};
-    }, { priority: 70 });
-
-    // ----------------------------------------------------------
-    // 4b. SKILL-GATE (before_tool_call, priority 68)
-    //     Block high-risk ops without consulting skills first.
-    // ----------------------------------------------------------
-    api.on("before_tool_call", async (event, ctx) => {
-      if (isHeartbeatSession(ctx)) return {};
-      const tn = (event.toolName || "").toLowerCase();
-      if (tn !== "exec" && tn !== "bash") return {};
-      if (isComplianceExec(event.params) || currentTurn <= (cfg.gracePeriodTurns || 5) || skillConsultedThisTurn) return {};
-      const cmd = event.params?.command || event.params?.cmd || "";
-      const ops = [[/\b(deploy|scp\s|rsync\s)/i, "deploy"], [/\b(docker|container|lxc|pct\s)/i, "infrastructure"], [/\bswarm\b/i, "code-swarm"], [/\b(n8n|workflow)/i, "n8n"]];
-      const match = ops.find(([p]) => p.test(cmd));
-      if (!match) return {};
-      log("BLOCKED skill-gate: " + match[1]);
-      return { block: true, blockReason: `SKILL GATE: About to do ${match[1]} work without consulting skills. Read SKILL-INDEX.md, then the relevant SKILL.md. Skills have workflow knowledge you'll miss.` };
-    }, { priority: 68 });
-
-    // ----------------------------------------------------------
-    // 5. TASK-FRESHNESS-GATE (before_tool_call, priority 65)
-    // ----------------------------------------------------------
-    const taskTurnThreshold = cfg.taskFreshnessTurns || 10;
-    const graceTurns = cfg.gracePeriodTurns || 5;
-
-    api.on("before_tool_call", async (event, ctx) => {
-      if (isHeartbeatSession(ctx)) return {};
-      const tn = (event.toolName || "").toLowerCase();
-
-      // Only gate work tools -- let writes/edits through so model CAN comply
-      if (tn !== "exec" && tn !== "bash" && tn !== "message") return {};
-
-      // Never block compliance calls (mcp2cli) -- they're how you DO the compliance
-      if ((tn === "exec" || tn === "bash") && isComplianceExec(event.params)) return {};
-
-      // Grace period at session start
-      if (currentTurn <= graceTurns) return {};
-
-      // Check staleness by turn count
-      const turnsSinceUpdate = currentTurn - lastTasksWriteTurn;
-      if (turnsSinceUpdate <= taskTurnThreshold) return {};
-
-      // Double-check via file mtime (write may have happened outside plugin)
-      try {
-        const stat = statSync(TASKS_PATH);
-        if (Date.now() - stat.mtimeMs < 60000) return {};
-      } catch {}
-
-      const blocked = event.params?.command || event.params?.cmd || event.params?.text || tn;
-      log("BLOCKED task-freshness-gate: " + turnsSinceUpdate + " turns since TASKS.md update");
-      return {
-        block: true,
-        blockReason: `TASK GATE: TASKS.md hasn't been updated in ${turnsSinceUpdate} turns. 1) Write to ${TASKS_PATH} now -- update Last HB timestamps, status, what you're doing. 2) Then IMMEDIATELY resume what you were doing (you were about to: ${String(blocked).substring(0, 80)}). Do NOT stop after updating -- the update is a pit stop, not the destination.`,
-      };
-    }, { priority: 65 });
-
-    // ----------------------------------------------------------
-    // 6. CONVERSATION-FRESHNESS-GATE (before_tool_call, priority 62)
-    // ----------------------------------------------------------
-    const convTurnThreshold = cfg.conversationFreshnessTurns || 15;
-
-    api.on("before_tool_call", async (event, ctx) => {
-      if (isHeartbeatSession(ctx)) return {};
-      const tn = (event.toolName || "").toLowerCase();
-
-      if (tn !== "exec" && tn !== "bash" && tn !== "message") return {};
-      if ((tn === "exec" || tn === "bash") && isComplianceExec(event.params)) return {};
-      if (currentTurn <= graceTurns) return {};
-
-      const turnsSinceUpdate = currentTurn - lastConversationsWriteTurn;
-      if (turnsSinceUpdate <= convTurnThreshold) return {};
-
-      try {
-        const stat = statSync(CONVERSATIONS_PATH);
-        if (Date.now() - stat.mtimeMs < 120000) return {};
-      } catch {}
-
-      const blockedConv = event.params?.command || event.params?.cmd || event.params?.text || tn;
-      log("BLOCKED conversation-freshness-gate: " + turnsSinceUpdate + " turns since CONVERSATIONS.md update");
-      return {
-        block: true,
-        blockReason: `CONVERSATIONS GATE: CONVERSATIONS.md hasn't been updated in ${turnsSinceUpdate} turns. 1) Write to ${CONVERSATIONS_PATH} -- update topics, heat, what's current. 2) Then IMMEDIATELY resume what you were doing (you were about to: ${String(blockedConv).substring(0, 80)}). Do NOT stop after updating -- the update is a pit stop, not the destination.`,
-      };
-    }, { priority: 62 });
-
-    // ----------------------------------------------------------
-    // 6b. CONTEXT-BEFORE-MESSAGE (before_tool_call, priority 58)
-    //     No more half-cocked replies. Load context before speaking.
-    // ----------------------------------------------------------
-    api.on("before_tool_call", async (event, ctx) => {
-      if (isHeartbeatSession(ctx)) return {};
-      const tn = (event.toolName || "").toLowerCase();
-      if (tn !== "message" || currentTurn <= (cfg.gracePeriodTurns || 5)) return {};
-      if (toolCallsSinceMessage > (cfg.commGateThreshold || 8)) return {};
-      if (tasksReadThisSession && conversationsReadThisSession && obContextLoadedThisSession) return {};
-      const missing = [!tasksReadThisSession && "TASKS.md", !conversationsReadThisSession && "CONVERSATIONS.md", !obContextLoadedThisSession && "OB context"].filter(Boolean);
-      log("BLOCKED context-gate: missing " + missing.join(", "));
-      return { block: true, blockReason: `CONTEXT GATE: Load context before responding. Missing: ${missing.join(", ")}. Read TASKS.md + CONVERSATIONS.md + run mcp2cli open-brain session_load --params '{"project":"skippy-main"}' BEFORE sending messages. You keep saying dumb stuff without context.` };
-    }, { priority: 58 });
-
-    // ----------------------------------------------------------
-    // 7. COMMUNICATION-GATE (before_tool_call, priority 55)
-    // ----------------------------------------------------------
-    const commThreshold = cfg.commGateThreshold || 8;
-
-    api.on("before_tool_call", async (event, ctx) => {
-      if (isHeartbeatSession(ctx)) return {};
-      const tn = (event.toolName || "").toLowerCase();
-
-      // Only gate exec/bash -- don't block writes, edits, or messages
-      if (tn !== "exec" && tn !== "bash") return {};
-      if (isComplianceExec(event.params)) return {};
-
-      // Grace period
-      if (currentTurn <= graceTurns) return {};
-
-      if (toolCallsSinceMessage <= commThreshold) return {};
-
-      const blockedComm = event.params?.command || event.params?.cmd || tn;
-      log("BLOCKED communication-gate: " + toolCallsSinceMessage + " tool calls without message");
-      return {
-        block: true,
-        blockReason: `COMMS GATE: You've made ${toolCallsSinceMessage} tool calls without sending a status update. 1) Post a progress message to the active channel NOW. 2) Then IMMEDIATELY resume what you were doing (you were about to: ${String(blockedComm).substring(0, 80)}). Do NOT stop after posting -- the update is a pit stop, not the destination.`,
-      };
-    }, { priority: 55 });
-
-    // ----------------------------------------------------------
-    // 7b. POST-BOUNCE RESUME (before_prompt_build, priority 60)
-    //     On plugin reload (gateway bounce), check for RESUME.md and
-    //     inject it as context so the agent knows what was happening.
-    //     Fires once, then deletes the file.
-    // ----------------------------------------------------------
-    api.on("before_prompt_build", async () => {
-      if (resumeConsumed) return {};
-      resumeConsumed = true;
-      try {
-        if (!existsSync(RESUME_PATH)) return {};
-        const resume = readFileSync(RESUME_PATH, "utf-8");
-        if (!resume.trim()) return {};
-        unlinkSync(RESUME_PATH);
-        log("INJECTED post-bounce-resume");
-        return {
-          appendSystemContext: `\nPOST-BOUNCE CONTEXT RECOVERY\nThe gateway was restarted mid-session. Here is what was happening before the bounce:\n\n${resume}\n\nResume this work. Do NOT pretend you don't know what happened -- this IS your context.`,
-        };
-      } catch {
-        return {};
-      }
-    }, { priority: 60 });
-
-    // ----------------------------------------------------------
-    // 8. TASK-STALLED-ALERT (before_prompt_build, priority 40)
-    // ----------------------------------------------------------
-    api.on("before_prompt_build", async () => {
-      promptTurnCount++;
-
-      let tasksContent = "";
-      try {
-        tasksContent = readFileSync(TASKS_PATH, "utf-8");
-      } catch {
-        return {};
-      }
-
-      if (!tasksContent.includes("STALLED")) return {};
-
-      // Extract STALLED task sections only
-      const lines = tasksContent.split("\n");
-      const stalled = [];
-      let capturing = false;
-      for (const line of lines) {
-        if (/STALLED/.test(line)) { capturing = true; stalled.push(line); continue; }
-        if (capturing) {
-          stalled.push(line);
-          if (line.trim() === "" || /^### /.test(line)) capturing = false;
-        }
-      }
-
-      log("INJECTED task-stalled-alert");
-      return {
-        appendSystemContext: `\nSTALLED TASK ALERT -- DROP EVERYTHING\n${stalled.join("\n")}\n\nAddress this IMMEDIATELY. Update TASKS.md with current status.`,
-      };
-    }, { priority: 40 });
-
-    // ----------------------------------------------------------
-    // 8a. SKILL-INDEX-REMINDER (before_prompt_build, priority 35)
-    //     Light reminder of available skills every 10 turns.
-    //     NOT enforcement -- just awareness. "You have tools, use them."
-    // ----------------------------------------------------------
-    const SKILL_INDEX_PATH = join(WORKSPACE, "SKILL-INDEX.md");
-
-    api.on("before_prompt_build", async () => {
-      if (promptTurnCount % 10 !== 0) return {};
-
-      try {
-        const index = readFileSync(SKILL_INDEX_PATH, "utf-8");
-        log("INJECTED skill-index-reminder (turn " + promptTurnCount + ")");
-        return {
-          appendSystemContext: `\nAVAILABLE SKILLS (check before doing anything manually):\n${index}\n\nRead the full SKILL.md before using. Do NOT guess at usage -- the skill has instructions.`,
-        };
-      } catch {
-        return {};
-      }
-    }, { priority: 35 });
-
-    // ----------------------------------------------------------
-    // 9. SENTIMENT-TRACKER (before_prompt_build, priority 50)
-    //    Wagering System -- score user sentiment, update SCORECARD.md
-    // ----------------------------------------------------------
-    api.on("before_prompt_build", async (event) => {
-      const messages = event.messages || [];
-      const lastUser = [...messages].reverse().find((m) => m.role === "user");
-      if (!lastUser) return {};
-
-      const text = typeof lastUser.content === "string" ? lastUser.content : JSON.stringify(lastUser.content || "");
-      if (text === sentimentLastMsg) return {};
-      sentimentLastMsg = text;
-
-      // Skip automated/system messages -- these aren't real user sentiment
-      if (/BOOT\.md|boot check|Follow .+ instructions exactly/i.test(text)) return {};
-      // Skip JSON blobs (tool output reflected as user role)
-      if (/^\s*[\[{]/.test(text) && text.length > 50) return {};
-      // Skip system-injected context (XML tags, markdown headers, long structured content)
-      if (/^<(system|context|instructions|reminder|tool)/i.test(text.trim())) return {};
-      // Skip very short messages (emoji-only handled by patterns, but skip empty/whitespace)
-      if (text.trim().length < 3) return {};
-      // Skip messages that are mostly non-conversational (e.g. file contents, code dumps)
-      if (text.length > 500) return {};
-
-      let total = 0;
-      const triggers = [];
-      for (const { p, w, l } of POSITIVE) if (p.test(text)) { total += w; triggers.push(`+${w} ${l}`); }
-      for (const { p, w, l } of NEGATIVE) if (p.test(text)) { total += w; triggers.push(`${w} ${l}`); }
-      if (Math.abs(total) < 2) return {};
-
-      // Update SCORECARD.md
-      const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
-      const sentiment = total > 0 ? "POSITIVE" : "NEGATIVE";
-      const entry = `\n- [${ts}] ${total > 0 ? "+" : ""}${total} ${sentiment} | ${triggers.join(", ")} | "${text.slice(0, 100)}"`;
-
-      try {
-        if (existsSync(SCORECARD_PATH)) {
-          let sc = readFileSync(SCORECARD_PATH, "utf-8");
-          if (sc.includes("## Recent Feedback")) {
-            const parts = sc.split("## Recent Feedback");
-            sc = parts[0] + "## Recent Feedback" + entry + parts[1];
-          } else {
-            sc += "\n## Recent Feedback" + entry + "\n";
-          }
-          const scoreMatch = sc.match(/Current Score:\s*(-?\d+)/);
-          if (scoreMatch) {
-            const newScore = parseInt(scoreMatch[1], 10) + total;
-            sc = sc.replace(/Current Score:\s*-?\d+/, `Current Score: ${newScore}`);
-          }
-          writeFileSync(SCORECARD_PATH, sc, "utf-8");
-          log("sentiment: " + sentiment + " (" + total + ") | " + JSON.stringify(text.slice(0, 120)));
-        }
-      } catch {}
-
-      if (total < -2) {
-        return {
-          appendSystemContext: `\nBEHAVIORAL ALERT\nUser expressed ${sentiment.toLowerCase()} sentiment (${total}). Triggers: ${triggers.join(", ")}. Acknowledge the feedback. Own errors specifically. Check SCORECARD.md for patterns.`,
-        };
-      }
-      return {};
-    }, { priority: 50 });
-
-    // ----------------------------------------------------------
-    // 10. HEARTBEAT-GATE (before_tool_call, priority 45)
-    //     v2.5.1: skip during active conversations (C), write RESUME.md breadcrumb on block (A)
-    // ----------------------------------------------------------
-    const heartbeatMs = cfg.heartbeatIntervalMs || 10 * 60 * 1000;
-    const activeConversationMs = cfg.activeConversationMs || 5 * 60 * 1000;
-
-    api.on("before_tool_call", async (event, ctx) => {
-      if (isHeartbeatSession(ctx)) return {};
-      const tn = (event.toolName || "").toLowerCase();
-
-      if (tn !== "exec" && tn !== "bash") return {};
-      if (isComplianceExec(event.params)) return {};
-      if (currentTurn <= graceTurns) return {};
-
-      // C: skip heartbeat entirely during active conversations
-      const sinceLastMessage = Date.now() - lastMessageReceivedTime;
-      if (sinceLastMessage < activeConversationMs) {
-        log("heartbeat-gate: skipped (active conversation, " + Math.round(sinceLastMessage / 1000) + "s since last message)");
-        return {};
-      }
-
-      let lastWrite = lastScorecardWriteTime;
-      try {
-        const mtime = statSync(SCORECARD_PATH).mtimeMs;
-        if (mtime > lastWrite) lastWrite = mtime;
-      } catch {}
-      const elapsed = Date.now() - lastWrite;
-      if (elapsed <= heartbeatMs) return {};
-
-      const mins = Math.round(elapsed / 60000);
-      const blockedHB = event.params?.command || event.params?.cmd || event.params?.text || tn;
-
-      // A: write RESUME.md breadcrumb so agent can pick back up
-      try {
-        const ts = new Date().toISOString().slice(0, 19).replace("T", " ");
-        const resume = `# Resume Point\n\n**When:** ${ts}\n**Interrupted by:** heartbeat gate (${mins}min overdue)\n**Was about to run:** \`${String(blockedHB).substring(0, 200)}\`\n**Turn:** ${currentTurn}\n\nAfter heartbeat, resume this immediately.\n`;
-        writeFileSync(RESUME_PATH, resume, "utf-8");
-        log("heartbeat-gate: wrote RESUME.md breadcrumb");
-      } catch {}
-
-      log("BLOCKED heartbeat-gate: " + mins + " min since scorecard update");
-      return {
-        block: true,
-        blockReason: `HEARTBEAT GATE: No heartbeat activity in ${mins} minutes. 1) Run heartbeat: read TASKS.md, update SCORECARD.md, session_save to OB. 2) Read ${RESUME_PATH} and IMMEDIATELY resume what you were doing. Do NOT stop after the heartbeat -- it's a pit stop, not the destination.`,
-      };
-    }, { priority: 45 });
-
-    // ----------------------------------------------------------
-    // STATE RESET on new user message + BOT-BANTER TRACKING
-    // ----------------------------------------------------------
-    api.on("message_received", async (event, ctx) => {
-      obQueriedThisTurn = false;
-      sopSearchedThisTurn = false;
-      skillConsultedThisTurn = false;
-      currentTurn++;
-      lastMessageReceivedTime = Date.now();
-
-      // Bot-banter circuit breaker: detect bot senders
-      const senderIsBot = Boolean(
-        event?.metadata?.bot ||
-        event?.metadata?.author?.bot ||
-        event?.metadata?.isBot ||
-        event?.metadata?.sender?.bot
-      );
-      inboundIsBot = senderIsBot;
-
-      if (senderIsBot) {
-        const chKey = ctx?.channelId || ctx?.conversationId || "global";
-        const state = botBanterState.get(chKey) || { count: 0, windowStart: Date.now(), hostileSent: false };
-
-        if (Date.now() - state.windowStart > BOT_BANTER_WINDOW_MS) {
-          state.count = 0;
-          state.windowStart = Date.now();
-          state.hostileSent = false;
-        }
-
-        state.count++;
-        botBanterState.set(chKey, state);
-        log("bot-banter: bot message #" + state.count + " in channel " + chKey + " (limit: " + BOT_BANTER_LIMIT + ")");
-      } else {
-        // Human message -- reset all counters
-        botBanterState.clear();
-        inboundIsBot = false;
-        log("bot-banter: human message -- all counters reset");
-      }
-    });
-
-    // ----------------------------------------------------------
-    // 11. BOT-BANTER-GATE (message_sending, priority 120)
-    //     HARD circuit breaker on bot-to-bot message exchanges.
-    //     After BOT_BANTER_LIMIT exchanges in a rolling window,
-    //     first response is hostile, all subsequent are cancelled.
-    //     Only a human message resets the counter.
-    //     Operator rule: "more than 5 and you're done."
-    // ----------------------------------------------------------
-    api.on("message_sending", async (event, ctx) => {
-      if (!inboundIsBot) return {};
-
-      const chKey = ctx?.channelId || ctx?.conversationId || "global";
-      const state = botBanterState.get(chKey);
-      if (!state || state.count <= BOT_BANTER_LIMIT) return {};
-
-      // Over the limit -- enforce
-      if (!state.hostileSent) {
-        state.hostileSent = true;
-        botBanterState.set(chKey, state);
-        const msg = BOT_BANTER_HOSTILE_MESSAGES[Math.floor(Math.random() * BOT_BANTER_HOSTILE_MESSAGES.length)]
-          .replace("{count}", String(state.count));
-        log("bot-banter-gate: HOSTILE RESPONSE (" + state.count + " exchanges in " + chKey + ")");
-        return { content: msg };
-      }
-
-      // Already sent hostile -- silently cancel everything after
-      log("bot-banter-gate: CANCELLED (post-hostile, " + state.count + " exchanges in " + chKey + ")");
-      return { cancel: true };
-    }, { priority: 120 });
-
-    log("registered: 13 before_tool_call (12 blocking + 1 tracker) + 4 before_prompt_build + 1 message_received + 1 message_sending (19 Jeraptha v2.5.3 hooks)");
+    const state = createState();
+    const debug = cfg.debug !== false;
+    const gl = (name) => createGateLogger(name, api.logger, state, debug);
+
+    // -- before_tool_call gates (priority order: high runs first) --
+    api.on(
+      "before_tool_call",
+      createObserveToolCallState(state, cfg, gl("state-tracker")),
+      { priority: 110 },
+    );
+    api.on(
+      "before_tool_call",
+      createBlockConfigModification(state, cfg, gl("config-modification")),
+      { priority: 100 },
+    );
+    api.on(
+      "before_tool_call",
+      createBlockDestructiveGitCommands(state, cfg, gl("destructive-git")),
+      { priority: 95 },
+    );
+    api.on(
+      "before_tool_call",
+      createBlockSedOnWorkspace(state, cfg, gl("sed-workspace")),
+      { priority: 92 },
+    );
+    api.on(
+      "before_tool_call",
+      createBlockLongPollTimeouts(state, cfg, gl("long-poll")),
+      { priority: 90 },
+    );
+    api.on(
+      "before_tool_call",
+      createBlockWithoutObSearch(state, cfg, gl("ob-search")),
+      { priority: 80 },
+    );
+    api.on(
+      "before_tool_call",
+      createBlockWithoutSopSearch(state, cfg, gl("sop-search")),
+      { priority: 70 },
+    );
+    api.on(
+      "before_tool_call",
+      createBlockWithoutSkillConsult(state, cfg, gl("skill-consult")),
+      { priority: 68 },
+    );
+    api.on(
+      "before_tool_call",
+      createBlockStaleTaskFile(state, cfg, gl("task-freshness")),
+      { priority: 65 },
+    );
+    api.on(
+      "before_tool_call",
+      createBlockStaleConversationFile(
+        state,
+        cfg,
+        gl("conversation-freshness"),
+      ),
+      { priority: 62 },
+    );
+    api.on(
+      "before_tool_call",
+      createBlockMessageWithoutContext(state, cfg, gl("context-before-msg")),
+      { priority: 58 },
+    );
+    api.on(
+      "before_tool_call",
+      createBlockSilentWorkStreak(state, cfg, gl("silent-work")),
+      { priority: 55 },
+    );
+    api.on(
+      "before_tool_call",
+      createBlockPraiseWithoutReview(state, cfg, gl("praise-review")),
+      { priority: 52 },
+    );
+    api.on(
+      "before_tool_call",
+      createBlockUserDataContradiction(state, cfg, gl("contradiction")),
+      { priority: 50 },
+    );
+    api.on(
+      "before_tool_call",
+      createBlockStaleScorecard(state, cfg, gl("heartbeat")),
+      { priority: 45 },
+    );
+
+    // -- before_prompt_build injections --
+    api.on(
+      "before_prompt_build",
+      createScanMessageContext(state, cfg, gl("msg-context")),
+      { priority: 90 },
+    );
+    api.on(
+      "before_prompt_build",
+      createInjectResumeAfterRestart(state, cfg, gl("resume-inject")),
+      { priority: 60 },
+    );
+    api.on(
+      "before_prompt_build",
+      createScoreAndInjectUserSentiment(state, cfg, gl("sentiment")),
+      { priority: 50 },
+    );
+    api.on(
+      "before_prompt_build",
+      createInjectStalledTaskAlert(state, cfg, gl("stalled-alert")),
+      { priority: 40 },
+    );
+    api.on(
+      "before_prompt_build",
+      createInjectSkillIndexPeriodically(state, cfg, gl("skill-reminder")),
+      { priority: 35 },
+    );
+
+    // -- message events --
+    api.on(
+      "message_received",
+      createResetPerTurnState(state, cfg, gl("state-reset")),
+    );
+    api.on(
+      "message_sending",
+      createBreakBotToBotLoop(state, cfg, gl("bot-banter")),
+      { priority: 120 },
+    );
+
+    api.logger.info(
+      `[jeraptha] registered: 15 before_tool_call (14 blocking + 1 tracker) + 5 before_prompt_build + 1 message_received + 1 message_sending (22 Jeraptha v3.1.1 hooks)`,
+    );
   },
 };
 

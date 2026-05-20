@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# jeraptha v2.0 installer
+# jeraptha v3.0 installer
 # Installs plugin, workspace files, docs, and config into an OpenClaw instance
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,7 +26,7 @@ while [[ $# -gt 0 ]]; do
     --dry-run) DRY_RUN=true; shift ;;
     --help|-h)
       echo "Usage: $0 [--workspace <path>] [--hooks <path>] [--apply-config] [--dry-run]"
-      echo "Installs jeraptha v2.0 into an OpenClaw instance."
+      echo "Installs jeraptha v3.0 into an OpenClaw instance."
       echo "  --workspace <path>  Workspace dir (default: ~/.openclaw/workspace)"
       echo "  --hooks <path>      Hooks dir (default: ~/.openclaw/hooks)"
       echo "  --apply-config      Apply recommended config to openclaw.json"
@@ -72,7 +72,7 @@ backup_dir() {
   fi
 }
 
-log "Installing jeraptha v2.0"
+log "Installing jeraptha v3.0"
 log "  Workspace: $WORKSPACE | Hooks: $HOOKS_DIR"
 log "  Extensions: $EXTENSIONS_DIR | Config: $OC_CONFIG"
 echo ""
@@ -97,13 +97,21 @@ if [ -d "$PLUGIN_DIR" ]; then
 fi
 run "mkdir -p '$PLUGIN_DIR'"
 run "cp '$SCRIPT_DIR/plugin/openclaw.plugin.json' '$PLUGIN_DIR/'"
+run "cp '$SCRIPT_DIR/plugin/package.json' '$PLUGIN_DIR/'"
 run "cp '$SCRIPT_DIR/plugin/index.js' '$PLUGIN_DIR/'"
+# Copy plugin subdirectories. If you add a new subdirectory to plugin/, add it here.
+run "cp -R '$SCRIPT_DIR/plugin/shared' '$PLUGIN_DIR/'"
+run "cp -R '$SCRIPT_DIR/plugin/gates' '$PLUGIN_DIR/'"
+run "cp -R '$SCRIPT_DIR/plugin/injections' '$PLUGIN_DIR/'"
+run "cp -R '$SCRIPT_DIR/plugin/events' '$PLUGIN_DIR/'"
 run "cp '$SCRIPT_DIR/plugin/post-update-verify.sh' '$PLUGIN_DIR/'"
-log "  Plugin installed to $PLUGIN_DIR"
+run "chmod +x '$PLUGIN_DIR/post-update-verify.sh'"
+log "  Plugin installed to $PLUGIN_DIR (modular v3.0)"
 
 # Copy post-update-verify.sh to patches dir as well
 run "mkdir -p '$HOME/.openclaw/patches'"
 run "cp '$SCRIPT_DIR/plugin/post-update-verify.sh' '$HOME/.openclaw/patches/'"
+run "chmod +x '$HOME/.openclaw/patches/post-update-verify.sh'"
 log "  post-update-verify.sh copied to ~/.openclaw/patches/"
 
 # Enable the plugin via CLI
@@ -251,10 +259,11 @@ log "=== Post-Install Verification ==="
 errors=0
 
 # Check plugin files
-if [ -f "$PLUGIN_DIR/openclaw.plugin.json" ] && [ -f "$PLUGIN_DIR/index.js" ]; then
-  log "  Plugin files: OK"
+if [ -f "$PLUGIN_DIR/openclaw.plugin.json" ] && [ -f "$PLUGIN_DIR/index.js" ] && [ -d "$PLUGIN_DIR/gates" ] && [ -d "$PLUGIN_DIR/shared" ]; then
+  gate_count=$(ls "$PLUGIN_DIR/gates/"*.js 2>/dev/null | wc -l | tr -d ' ')
+  log "  Plugin files: OK ($gate_count gates)"
 else
-  err "  Plugin files: MISSING"
+  err "  Plugin files: MISSING (expected index.js + gates/ + shared/)"
   errors=$((errors + 1))
 fi
 
