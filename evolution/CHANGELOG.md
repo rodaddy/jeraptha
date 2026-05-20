@@ -4,6 +4,37 @@
 
 ---
 
+## v3.0.0 -- 2026-05-20 -- "No More Mushrooms"
+
+**Trigger: The mushroom incident.** Agent ran Python's `datetime`, got "Saturday" for May 16, and confidently told the user they were wrong about their own data -- three times. The agent had rules telling it to verify. It ignored them. Rules that don't block get ignored.
+
+### Architecture shift
+906-line monolithic `index.js` → modular architecture. Every gate is a separate file with its own tests and docs. `index.js` is now an 85-line registration layer.
+
+### Added
+- **block-user-data-contradiction** (before_tool_call, p50) -- Calls LiteLLM flash model to check if outgoing messages contradict user-provided data. Escalating: soft block on first contradiction, hard block on second. Fail-open if LiteLLM is down.
+- **block-praise-without-review** (before_tool_call, p52) -- Anti-sycophancy gate. When a PR/code review is shared, agent can praise + commit to review, but MUST spawn a review agent before sending another message. Praise without follow-through gets hard blocked.
+- **Full test suite** -- 224 tests across 23 files using `bun test`. Zero tests existed before. Every gate has input/output functional tests.
+- **Per-gate documentation** -- `docs/gates/`, `docs/injections/`, `docs/events/` with what/why/how/examples for every gate.
+- **Architecture doc** -- `docs/architecture.md` with priority map, state dependencies, event flow.
+- **Shared modules** -- `plugin/shared/` with constants, state, helpers, paths. All gates import from shared.
+- **Test fixtures** -- `tests/_fixtures/` with event factory, state factory, LiteLLM mock.
+
+### Changed
+- All 19 existing gates extracted from `index.js` into individual files under `plugin/gates/`, `plugin/injections/`, `plugin/events/`.
+- All files renamed from generic `handler.ts` to descriptive names (e.g., `block-without-ob-search.js`, `score-and-inject-user-sentiment.js`).
+- Gate factory pattern: `createGateName(state, config, log)` returns async handler. Shared state passed at registration.
+- `install.sh` updated to copy full `plugin/` directory (was just index.js + json).
+- Version bumped to 3.0.0 (breaking: directory structure).
+
+### Removed
+- Legacy `hooks/*/handler.ts` files -- dead code since v2.0 (managed hooks don't fire for `before_tool_call`).
+
+### The bet (updated)
+Can an LLM-backed enforcement gate catch contradictions that regex can't? Can blocking sycophantic praise force real code review? Odds: 3-1 in favor. The mushroom incident proves soft rules fail. The contradiction gate proves LLM-in-the-loop enforcement is feasible at zero cost (flash model is free).
+
+---
+
 ## v2.2.0 -- 2026-04-08 -- "You Forgot You Were Talking To Someone"
 
 ### Added
