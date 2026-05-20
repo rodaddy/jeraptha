@@ -15,45 +15,34 @@ function setup(stateOverrides?: Record<string, any>) {
   return { state, handler, log };
 }
 
-function prEvent(botText: string, userText: string) {
-  return createToolCallEvent(
-    "message",
-    { text: botText },
-    {
-      messages: [{ role: "user", content: userText }],
-    },
-  );
+function msgEvent(botText: string) {
+  return createToolCallEvent("message", { text: botText });
 }
 
 describe("block-praise-without-review", () => {
   // -------------------------------------------------------
-  // 1. Praise + commitment = allowed
+  // 1. Praise + commitment = allowed (PR context set by injection)
   // -------------------------------------------------------
   it("allows praise with a review commitment", async () => {
-    const { state, handler } = setup();
+    const { state, handler } = setup({ prReviewContext: true });
 
-    const event = prEvent(
+    const event = msgEvent(
       "Looks solid, let me dig into the code and check the changes.",
-      "Review this PR: https://github.com/org/repo/pull/42",
     );
 
     const result = await handler(event, createMockContext());
 
     expect(result.block).toBeUndefined();
     expect(state.reviewPromisedThisTurn).toBe(true);
-    expect(state.prReviewContext).toBe(true);
   });
 
   // -------------------------------------------------------
   // 2. Praise without commitment = blocked
   // -------------------------------------------------------
   it("blocks praise without a review commitment in PR context", async () => {
-    const { handler } = setup();
+    const { handler } = setup({ prReviewContext: true });
 
-    const event = prEvent(
-      "Looks great! Ship it!",
-      "Check this PR please: https://github.com/org/repo/pull/99",
-    );
+    const event = msgEvent("Looks great! Ship it!");
 
     const result = await handler(event, createMockContext());
 
@@ -72,9 +61,8 @@ describe("block-praise-without-review", () => {
       reviewAgentSpawned: false,
     });
 
-    const event = prEvent(
+    const event = msgEvent(
       "Yeah I think the approach is right, it handles edge cases well.",
-      "Review this code review please",
     );
 
     const result = await handler(event, createMockContext());
@@ -94,9 +82,8 @@ describe("block-praise-without-review", () => {
       reviewAgentSpawned: true,
     });
 
-    const event = prEvent(
+    const event = msgEvent(
       "The review found a couple of issues -- here's what I found.",
-      "Review this code review please",
     );
 
     const result = await handler(event, createMockContext());
@@ -115,7 +102,7 @@ describe("block-praise-without-review", () => {
   it("passes everything through when not in PR context", async () => {
     const { handler } = setup();
 
-    const event = prEvent("Looks great! Ship it!", "How is the weather today?");
+    const event = msgEvent("Looks great! Ship it!");
 
     const result = await handler(event, createMockContext());
 
@@ -125,13 +112,7 @@ describe("block-praise-without-review", () => {
   it("ignores non-message tools even in PR context", async () => {
     const { handler } = setup({ prReviewContext: true });
 
-    const event = createToolCallEvent(
-      "exec",
-      { command: "ls" },
-      {
-        messages: [{ role: "user", content: "Review this PR #42" }],
-      },
-    );
+    const event = createToolCallEvent("exec", { command: "ls" });
 
     const result = await handler(event, createMockContext());
     expect(result.block).toBeUndefined();
@@ -141,11 +122,10 @@ describe("block-praise-without-review", () => {
   // 6. Clarifying question = allowed
   // -------------------------------------------------------
   it("allows non-praise responses in PR context (clarifying questions)", async () => {
-    const { handler } = setup();
+    const { handler } = setup({ prReviewContext: true });
 
-    const event = prEvent(
+    const event = msgEvent(
       "What was the motivation for changing the retry logic here?",
-      "Review this PR: https://github.com/org/repo/pull/42",
     );
 
     const result = await handler(event, createMockContext());
@@ -154,59 +134,47 @@ describe("block-praise-without-review", () => {
   });
 
   // -------------------------------------------------------
-  // Edge: PR context detected from various patterns
-  // -------------------------------------------------------
-  it("detects PR context from 'code review' mention", async () => {
-    const { state, handler } = setup();
-
-    const event = prEvent(
-      "What changes are included?",
-      "I need a code review on the auth module",
-    );
-
-    await handler(event, createMockContext());
-    expect(state.prReviewContext).toBe(true);
-  });
-
-  it("detects PR context from PR number pattern", async () => {
-    const { state, handler } = setup();
-
-    const event = prEvent(
-      "What does this change?",
-      "Check PR #123 when you get a chance",
-    );
-
-    await handler(event, createMockContext());
-    expect(state.prReviewContext).toBe(true);
-  });
-
-  // -------------------------------------------------------
   // Two-step flow: promise then hard block
   // -------------------------------------------------------
   it("exercises actual two-step flow: promise then hard block", async () => {
-    const { state, handler } = setup();
+    const { state, handler } = setup({ prReviewContext: true });
 
-    // Step 1: praise + commitment in PR context -- should allow and set reviewPromisedThisTurn
-    const firstEvent = prEvent(
-      "Looks great, let me check the code and review the changes.",
-      "Review this PR: https://github.com/org/repo/pull/55",
+    // Step 1: praise + commitment -- should allow and set reviewPromisedThisTurn
+    const first = await handler(
+      msgEvent("Looks great, let me check the code and review the changes."),
+      createMockContext(),
     );
 
-    const first = await handler(firstEvent, createMockContext());
     expect(first.block).toBeUndefined();
     expect(state.reviewPromisedThisTurn).toBe(true);
-    expect(state.prReviewContext).toBe(true);
 
     // Step 2: more praise without spawning a review agent -- should hard block
-    const secondEvent = prEvent(
-      "Yeah this looks solid, nice work on the error handling.",
-      "Review this PR: https://github.com/org/repo/pull/55",
+    const second = await handler(
+      msgEvent("Yeah this looks solid, nice work on the error handling."),
+      createMockContext(),
     );
 
-    const second = await handler(secondEvent, createMockContext());
     expect(second.block).toBe(true);
     expect(second.blockReason).toContain("HARD BLOCK");
     expect(second.blockReason).toContain("haven't spawned a review agent");
+  });
+
+  // -------------------------------------------------------
+  // reviewAgentSpawned persists across turns
+  // -------------------------------------------------------
+  it("reviewAgentSpawned persists across turns (session-scoped)", async () => {
+    const { handler } = setup({
+      prReviewContext: true,
+      reviewPromisedThisTurn: true,
+      reviewAgentSpawned: true,
+    });
+
+    const result = await handler(
+      msgEvent("Here are the review findings."),
+      createMockContext(),
+    );
+
+    expect(result.block).toBeUndefined();
   });
 
   // -------------------------------------------------------
@@ -215,13 +183,7 @@ describe("block-praise-without-review", () => {
   it("allows empty bot messages", async () => {
     const { handler } = setup({ prReviewContext: true });
 
-    const event = createToolCallEvent(
-      "message",
-      { text: "" },
-      {
-        messages: [{ role: "user", content: "Review this PR #1" }],
-      },
-    );
+    const event = createToolCallEvent("message", { text: "" });
 
     const result = await handler(event, createMockContext());
     expect(result.block).toBeUndefined();

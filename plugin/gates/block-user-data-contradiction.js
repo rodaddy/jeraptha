@@ -1,8 +1,8 @@
-import { getToolName, getMessageText, getMessages } from "../shared/helpers.js";
+import { getToolName, getMessageText } from "../shared/helpers.js";
 
-// NOTE: This gate runs at priority 50. If a higher-priority gate already blocked
-// this tool call, OpenClaw may still invoke this gate. The LLM call is wasted in
-// that case. If this becomes a performance concern, check event.blocked or similar.
+const CIRCUIT_BREAK_THRESHOLD = 10;
+const CIRCUIT_BREAK_COOLDOWN_MS = 5 * 60 * 1000;
+
 export function createBlockUserDataContradiction(state, config, log) {
   const litellmUrl =
     config.litellmUrl || "http://10.71.1.33:4000/v1/chat/completions";
@@ -17,30 +17,33 @@ export function createBlockUserDataContradiction(state, config, log) {
       return {};
     }
 
+    // Circuit breaker: skip if too many consecutive failures
+    if (state.contradictionGateFailures >= CIRCUIT_BREAK_THRESHOLD) {
+      if (!state.contradictionCircuitBreakerUntil) {
+        state.contradictionCircuitBreakerUntil =
+          Date.now() + CIRCUIT_BREAK_COOLDOWN_MS;
+        log.warn("circuit breaker tripped", {
+          failures: state.contradictionGateFailures,
+        });
+      }
+      if (Date.now() < state.contradictionCircuitBreakerUntil) {
+        log.skip(tn, "circuit breaker active");
+        return {};
+      }
+      state.contradictionGateFailures = 0;
+      state.contradictionCircuitBreakerUntil = null;
+      log.info("circuit breaker reset, retrying");
+    }
+
     const botMessage = getMessageText(event.params);
     if (!botMessage || botMessage.length < 10) {
       log.skip(tn, "bot message too short");
       return {};
     }
 
-    const messages = getMessages(event);
-    const userMessages = [...messages]
-      .reverse()
-      .filter((m) => m.role === "user")
-      .slice(0, 5);
-    if (userMessages.length === 0) {
-      log.skip(tn, "no user messages in history");
-      return {};
-    }
-    const userMessage = userMessages
-      .map((m) =>
-        typeof m.content === "string"
-          ? m.content
-          : JSON.stringify(m.content || ""),
-      )
-      .join("\n---\n");
-    if (userMessage.length < 10) {
-      log.skip(tn, "user message too short");
+    const userMessage = state.recentUserMessages;
+    if (!userMessage || userMessage.length < 10) {
+      log.skip(tn, "no user messages in context");
       return {};
     }
 

@@ -61,7 +61,8 @@ export function createBlockWithoutObSearch(state, config, log) {
     if (
       (tn === "exec" || tn === "bash") &&
       !isComplianceExec(event.params) &&
-      !state.obQueriedThisTurn
+      !state.obQueriedThisTurn &&
+      state.factualQuestionThisTurn
     ) {
       const cmd = getCommand(event.params);
       if (
@@ -76,7 +77,7 @@ export function createBlockWithoutObSearch(state, config, log) {
         return {
           block: true,
           blockReason:
-            'OB GATE: Searching project files without checking Open Brain first. Run: mcp2cli open-brain search_all --params \'{"query": "what you need"}\' BEFORE grepping.',
+            'OB GATE: Searching project files for a factual question without checking Open Brain first. Run: mcp2cli open-brain search_all --params \'{"query": "what you need"}\' BEFORE grepping.',
         };
       }
     }

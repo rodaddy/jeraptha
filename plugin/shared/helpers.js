@@ -1,7 +1,7 @@
 // mcp2cli calls are compliance/infrastructure -- never block them
 export const isComplianceExec = (params) => {
   const cmd = params?.command || params?.cmd || "";
-  return /mcp2cli/i.test(cmd);
+  return /^\s*(?:\S+=\S+\s+)*\S*mcp2cli\b/i.test(cmd);
 };
 
 // Heartbeat sessions run isolated -- they should never be blocked by behavioral gates.

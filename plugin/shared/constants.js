@@ -13,7 +13,7 @@ export const APPROVAL_PATHS = [/\.openclaw\/hooks\//i];
 // ============================================================
 
 export const DESTRUCTIVE_GIT = [
-  /\bgit\s+reset\b/i,
+  /\bgit\s+reset\b(?!\s+--soft\b)/i,
   /\bgit\s+clean\s+.*-[a-zA-Z]*f/i,
   /\bgit\s+checkout\s+\.\s*/i,
   /\bgit\s+restore\s+\.\s*/i,

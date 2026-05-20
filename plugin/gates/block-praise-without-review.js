@@ -1,29 +1,12 @@
 import {
-  PR_CONTEXT_PATTERNS,
   PRAISE_WITHOUT_REVIEW,
   REVIEW_COMMITMENT,
 } from "../shared/constants.js";
-import { getToolName, getMessageText, getMessages } from "../shared/helpers.js";
+import { getToolName, getMessageText } from "../shared/helpers.js";
 
 export function createBlockPraiseWithoutReview(state, config, log) {
   return async (event, ctx) => {
     const tn = getToolName(event);
-
-    // Detect PR/review context from user messages (set once per turn)
-    if (!state.prReviewContext) {
-      const messages = getMessages(event);
-      const lastUser = [...messages].reverse().find((m) => m.role === "user");
-      if (lastUser) {
-        const userText =
-          typeof lastUser.content === "string"
-            ? lastUser.content
-            : JSON.stringify(lastUser.content || "");
-        if (PR_CONTEXT_PATTERNS.some((p) => p.test(userText))) {
-          state.prReviewContext = true;
-          log.info("PR/review context detected");
-        }
-      }
-    }
 
     if (!state.prReviewContext) {
       log.skip(tn, "no PR/review context");

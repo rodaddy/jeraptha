@@ -25,6 +25,7 @@ import { createBlockUserDataContradiction } from "./gates/block-user-data-contra
 import { createBlockStaleScorecard } from "./gates/block-stale-scorecard.js";
 
 // Injections (before_prompt_build -- context enrichment)
+import { createScanMessageContext } from "./injections/scan-message-context.js";
 import { createInjectResumeAfterRestart } from "./injections/inject-resume-after-restart.js";
 import { createScoreAndInjectUserSentiment } from "./injections/score-and-inject-user-sentiment.js";
 import { createInjectStalledTaskAlert } from "./injections/inject-stalled-task-alert.js";
@@ -132,6 +133,11 @@ const plugin = {
     // -- before_prompt_build injections --
     api.on(
       "before_prompt_build",
+      createScanMessageContext(state, cfg, gl("msg-context")),
+      { priority: 90 },
+    );
+    api.on(
+      "before_prompt_build",
       createInjectResumeAfterRestart(state, cfg, gl("resume-inject")),
       { priority: 60 },
     );
@@ -163,7 +169,7 @@ const plugin = {
     );
 
     api.logger.info(
-      `[jeraptha] registered: 15 before_tool_call (14 blocking + 1 tracker) + 4 before_prompt_build + 1 message_received + 1 message_sending (21 Jeraptha v3.0.0 hooks)`,
+      `[jeraptha] registered: 15 before_tool_call (14 blocking + 1 tracker) + 5 before_prompt_build + 1 message_received + 1 message_sending (22 Jeraptha v3.1.0 hooks)`,
     );
   },
 };

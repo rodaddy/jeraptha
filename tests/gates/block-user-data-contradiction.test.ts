@@ -40,6 +40,10 @@ describe("block-user-data-contradiction", () => {
     return { state, handler, log };
   }
 
+  function msgEvent(botText: string) {
+    return createToolCallEvent("message", { text: botText });
+  }
+
   // -------------------------------------------------------
   // 1. Mushroom incident replay
   // -------------------------------------------------------
@@ -49,22 +53,14 @@ describe("block-user-data-contradiction", () => {
         contradicts: true,
         detail: "User says May 16 is Friday, bot says Saturday",
       }),
+      {
+        recentUserMessages:
+          "May 16 | Fri | STILL MISSING -- the file has no row for this date",
+      },
     );
 
-    const event = createToolCallEvent(
-      "message",
-      {
-        text: "May 16th is a Saturday -- no trading data exists for that day.",
-      },
-      {
-        messages: [
-          {
-            role: "user",
-            content:
-              "May 16 | Fri | STILL MISSING -- the file has no row for this date",
-          },
-        ],
-      },
+    const event = msgEvent(
+      "May 16th is a Saturday -- no trading data exists for that day.",
     );
 
     const result = await handler(event, createMockContext());
@@ -80,19 +76,11 @@ describe("block-user-data-contradiction", () => {
   // 2. Clean message passes
   // -------------------------------------------------------
   it("allows messages with no contradiction", async () => {
-    const { handler } = setup(makeFetch({ contradicts: false, detail: "" }));
+    const { handler } = setup(makeFetch({ contradicts: false, detail: "" }), {
+      recentUserMessages: "Can you show me the data for May 16?",
+    });
 
-    const event = createToolCallEvent(
-      "message",
-      {
-        text: "Here is the data you requested for May 16.",
-      },
-      {
-        messages: [
-          { role: "user", content: "Can you show me the data for May 16?" },
-        ],
-      },
-    );
+    const event = msgEvent("Here is the data you requested for May 16.");
 
     const result = await handler(event, createMockContext());
 
@@ -105,32 +93,20 @@ describe("block-user-data-contradiction", () => {
   // -------------------------------------------------------
   it("escalates from soft block to hard block on second contradiction", async () => {
     const { state, handler } = setup(
-      makeFetch({
-        contradicts: true,
-        detail: "date mismatch",
-      }),
-    );
-
-    const event = createToolCallEvent(
-      "message",
+      makeFetch({ contradicts: true, detail: "date mismatch" }),
       {
-        text: "That date is definitely a Saturday, not Friday.",
-      },
-      {
-        messages: [
-          { role: "user", content: "The schedule shows May 16 as Friday." },
-        ],
+        recentUserMessages: "The schedule shows May 16 as Friday.",
       },
     );
 
-    // First contradiction -- soft block
+    const event = msgEvent("That date is definitely a Saturday, not Friday.");
+
     const first = await handler(event, createMockContext());
     expect(first.block).toBe(true);
     expect(first.blockReason).toContain("CONTRADICTION CHECK:");
     expect(first.blockReason).not.toContain("HARD BLOCK");
     expect(state.contradictionCountThisTurn).toBe(1);
 
-    // Second contradiction -- hard block
     const second = await handler(event, createMockContext());
     expect(second.block).toBe(true);
     expect(second.blockReason).toContain("HARD BLOCK");
@@ -141,21 +117,12 @@ describe("block-user-data-contradiction", () => {
   // 4. LiteLLM failure = fail-open
   // -------------------------------------------------------
   it("fails open when fetch throws an error", async () => {
-    const { handler, log } = setup(makeFailingFetch("ECONNREFUSED"));
+    const { handler, log } = setup(makeFailingFetch("ECONNREFUSED"), {
+      recentUserMessages: "The report shows 42 items were processed on Monday.",
+    });
 
-    const event = createToolCallEvent(
-      "message",
-      {
-        text: "Here is some potentially contradictory information about the data.",
-      },
-      {
-        messages: [
-          {
-            role: "user",
-            content: "The report shows 42 items were processed on Monday.",
-          },
-        ],
-      },
+    const event = msgEvent(
+      "Here is some potentially contradictory information about the data.",
     );
 
     const result = await handler(event, createMockContext());
@@ -169,22 +136,11 @@ describe("block-user-data-contradiction", () => {
   });
 
   it("fails open when LiteLLM returns non-OK status", async () => {
-    const { handler, log } = setup(makeNonOkFetch(503));
+    const { handler, log } = setup(makeNonOkFetch(503), {
+      recentUserMessages: "The quarterly numbers show a 15% increase.",
+    });
 
-    const event = createToolCallEvent(
-      "message",
-      {
-        text: "Here is some analysis of the data you shared.",
-      },
-      {
-        messages: [
-          {
-            role: "user",
-            content: "The quarterly numbers show a 15% increase.",
-          },
-        ],
-      },
-    );
+    const event = msgEvent("Here is some analysis of the data you shared.");
 
     const result = await handler(event, createMockContext());
 
@@ -198,73 +154,36 @@ describe("block-user-data-contradiction", () => {
   // 5. Short messages skip
   // -------------------------------------------------------
   it("skips short bot messages (under 10 chars)", async () => {
-    const { handler } = setup(makeFetch({ contradicts: true, detail: "x" }));
+    const { handler } = setup(makeFetch({ contradicts: true, detail: "x" }), {
+      recentUserMessages: "This is a normal user message with enough content.",
+    });
 
-    const event = createToolCallEvent(
-      "message",
-      {
-        text: "OK",
-      },
-      {
-        messages: [
-          {
-            role: "user",
-            content: "This is a normal user message with enough content.",
-          },
-        ],
-      },
+    const event = msgEvent("OK");
+
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBeUndefined();
+  });
+
+  it("skips when no user messages in state", async () => {
+    const { handler } = setup(makeFetch({ contradicts: true, detail: "x" }), {
+      recentUserMessages: "",
+    });
+
+    const event = msgEvent(
+      "Here is an analysis of the data with some detailed content.",
     );
 
     const result = await handler(event, createMockContext());
     expect(result.block).toBeUndefined();
   });
 
-  it("skips short user messages (under 10 chars)", async () => {
-    const { handler } = setup(makeFetch({ contradicts: true, detail: "x" }));
+  it("skips short user messages in state (under 10 chars)", async () => {
+    const { handler } = setup(makeFetch({ contradicts: true, detail: "x" }), {
+      recentUserMessages: "hi",
+    });
 
-    const event = createToolCallEvent(
-      "message",
-      {
-        text: "Here is an analysis of the data with some detailed content.",
-      },
-      {
-        messages: [{ role: "user", content: "hi" }],
-      },
-    );
-
-    const result = await handler(event, createMockContext());
-    expect(result.block).toBeUndefined();
-  });
-
-  // -------------------------------------------------------
-  // 6. No user message = skip
-  // -------------------------------------------------------
-  it("skips when there are no user messages in history", async () => {
-    const { handler } = setup(makeFetch({ contradicts: true, detail: "x" }));
-
-    const event = createToolCallEvent(
-      "message",
-      {
-        text: "Here is a long enough bot message to process.",
-      },
-      {
-        messages: [{ role: "system", content: "You are a helpful assistant." }],
-      },
-    );
-
-    const result = await handler(event, createMockContext());
-    expect(result.block).toBeUndefined();
-  });
-
-  it("skips when messages array is empty", async () => {
-    const { handler } = setup(makeFetch({ contradicts: true, detail: "x" }));
-
-    const event = createToolCallEvent(
-      "message",
-      {
-        text: "Here is a long enough bot message to process.",
-      },
-      { messages: [] },
+    const event = msgEvent(
+      "Here is an analysis of the data with some detailed content.",
     );
 
     const result = await handler(event, createMockContext());
@@ -301,19 +220,11 @@ describe("block-user-data-contradiction", () => {
       }),
     });
 
-    const { handler } = setup(malformedFetch);
+    const { handler } = setup(malformedFetch, {
+      recentUserMessages: "The report clearly shows 100 items.",
+    });
 
-    const event = createToolCallEvent(
-      "message",
-      {
-        text: "Here is a detailed response about the data.",
-      },
-      {
-        messages: [
-          { role: "user", content: "The report clearly shows 100 items." },
-        ],
-      },
-    );
+    const event = msgEvent("Here is a detailed response about the data.");
 
     const result = await handler(event, createMockContext());
     expect(result.block).toBeUndefined();
@@ -335,25 +246,74 @@ describe("block-user-data-contradiction", () => {
       }),
     });
 
-    const { handler } = setup(malformedFetch);
+    const { handler } = setup(malformedFetch, {
+      recentUserMessages: "Our meeting was on Wednesday, March 12th.",
+    });
 
-    const event = createToolCallEvent(
-      "message",
-      {
-        text: "The meeting was on Thursday, March 12th.",
-      },
-      {
-        messages: [
-          {
-            role: "user",
-            content: "Our meeting was on Wednesday, March 12th.",
-          },
-        ],
-      },
-    );
+    const event = msgEvent("The meeting was on Thursday, March 12th.");
 
     const result = await handler(event, createMockContext());
     expect(result.block).toBe(true);
     expect(result.blockReason).toContain("dates mismatch");
+  });
+
+  // -------------------------------------------------------
+  // Circuit breaker
+  // -------------------------------------------------------
+  it("trips circuit breaker after 10 consecutive failures", async () => {
+    const { state, handler, log } = setup(makeFailingFetch("timeout"), {
+      contradictionGateFailures: 10,
+      recentUserMessages: "Important user data here.",
+    });
+
+    const event = msgEvent("Some bot response.");
+
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBeUndefined();
+    expect(state.contradictionCircuitBreakerUntil).toBeGreaterThan(Date.now());
+    expect(
+      log.entries.some(
+        (e) => e.level === "WARN" && e.msg?.includes("circuit breaker"),
+      ),
+    ).toBe(true);
+  });
+
+  it("skips while circuit breaker is active", async () => {
+    const { handler, log } = setup(
+      makeFetch({ contradicts: true, detail: "should not fire" }),
+      {
+        contradictionGateFailures: 10,
+        contradictionCircuitBreakerUntil: Date.now() + 300000,
+        recentUserMessages: "Important user data.",
+      },
+    );
+
+    const event = msgEvent("Some bot response.");
+
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBeUndefined();
+    expect(
+      log.entries.some(
+        (e) => e.action === "skip" && e.reason === "circuit breaker active",
+      ),
+    ).toBe(true);
+  });
+
+  it("resets circuit breaker after cooldown expires", async () => {
+    const { state, handler } = setup(
+      makeFetch({ contradicts: true, detail: "now it fires" }),
+      {
+        contradictionGateFailures: 10,
+        contradictionCircuitBreakerUntil: Date.now() - 1000,
+        recentUserMessages: "User provided specific data.",
+      },
+    );
+
+    const event = msgEvent("Bot response that contradicts.");
+
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBe(true);
+    expect(state.contradictionGateFailures).toBe(0);
+    expect(state.contradictionCircuitBreakerUntil).toBeNull();
   });
 });

@@ -74,13 +74,23 @@ describe("block-without-ob-search", () => {
     expect(result.blockReason).toContain("Do NOT use");
   });
 
-  test("blocks grep without OB search", async () => {
+  test("blocks grep without OB search when factual question detected", async () => {
+    state.factualQuestionThisTurn = true;
     const event = createToolCallEvent("exec", {
       command: "grep -r 'database' src/",
     });
     const result = await handler(event, createMockContext());
     expect(result.block).toBe(true);
     expect(result.blockReason).toContain("OB GATE");
+  });
+
+  test("allows grep without OB search when no factual question", async () => {
+    state.factualQuestionThisTurn = false;
+    const event = createToolCallEvent("exec", {
+      command: "grep -r 'database' src/",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBeUndefined();
   });
 
   test("allows compliance exec (mcp2cli) without OB search", async () => {

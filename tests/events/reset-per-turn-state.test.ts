@@ -38,8 +38,10 @@ describe("reset-per-turn-state", () => {
     expect(state.skillConsultedThisTurn).toBe(false);
     expect(state.contradictionCountThisTurn).toBe(0);
     expect(state.reviewPromisedThisTurn).toBe(false);
-    expect(state.reviewAgentSpawned).toBe(false);
+    expect(state.reviewAgentSpawned).toBe(true);
     expect(state.prReviewContext).toBe(false);
+    expect(state.recentUserMessages).toBe("");
+    expect(state.factualQuestionThisTurn).toBe(false);
   });
 
   // -------------------------------------------------------

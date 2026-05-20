@@ -50,11 +50,16 @@ export function createState() {
     // One-shot flags
     resumeConsumed: false,
 
-    // Contradiction-check gate (NEW)
+    // Message context (set by scan-message-context injection during before_prompt_build)
+    recentUserMessages: "",
+    factualQuestionThisTurn: false,
+
+    // Contradiction-check gate
     contradictionCountThisTurn: 0,
     contradictionGateFailures: 0,
+    contradictionCircuitBreakerUntil: null,
 
-    // Verify-before-praise gate (NEW)
+    // Verify-before-praise gate
     reviewPromisedThisTurn: false,
     reviewAgentSpawned: false,
     prReviewContext: false,
@@ -67,6 +72,7 @@ export function resetPerTurnState(state) {
   state.skillConsultedThisTurn = false;
   state.contradictionCountThisTurn = 0;
   state.reviewPromisedThisTurn = false;
-  state.reviewAgentSpawned = false;
   state.prReviewContext = false;
+  state.recentUserMessages = "";
+  state.factualQuestionThisTurn = false;
 }

@@ -16,9 +16,12 @@ describe("DESTRUCTIVE_GIT patterns", () => {
   const matches = (cmd: string) =>
     DESTRUCTIVE_GIT.some((p: RegExp) => p.test(cmd));
 
-  test("blocks git reset", () => {
+  test("blocks git reset (except --soft)", () => {
     expect(matches("git reset --hard HEAD~1")).toBe(true);
-    expect(matches("git reset --soft HEAD")).toBe(true);
+    expect(matches("git reset --mixed HEAD~1")).toBe(true);
+    expect(matches("git reset HEAD~1")).toBe(true);
+    expect(matches("git reset --soft HEAD")).toBe(false);
+    expect(matches("git reset --soft HEAD~1")).toBe(false);
   });
 
   test("blocks git force push", () => {

@@ -16,11 +16,23 @@ export function createBlockConfigModification(state, config, log) {
       if (HARD_BLOCKED_PATHS.some((p) => p.test(cmd))) {
         if (WRITE_INTENTS.test(cmd)) {
           if (/\bssh\s+/i.test(cmd)) {
+            if (
+              /\bssh\s+(?:\S+=\S+\s+)*(localhost|127\.0\.0\.1|10\.71\.1\.21)\b/i.test(
+                cmd,
+              )
+            ) {
+              log.block(tn, "SSH to self is not cross-agent");
+              return {
+                block: true,
+                blockReason:
+                  "CARAPACE LOCK: SSH to localhost/self is not a valid bypass for config protection. This is self-modification via SSH loopback.",
+              };
+            }
             log.allow(tn, "cross-agent SSH to protected path");
             return {};
           }
-          if (/\boc-channel\b/i.test(cmd)) {
-            log.allow(tn, "oc-channel to protected path");
+          if (/^\s*(?:\S+=\S+\s+)*oc-channel\b/i.test(cmd)) {
+            log.allow(tn, "oc-channel command to protected path");
             return {};
           }
           log.block(tn, "write to hard-blocked path", {
