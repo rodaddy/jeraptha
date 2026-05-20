@@ -2,6 +2,7 @@ import {
   isHeartbeatSession,
   isComplianceExec,
   getToolName,
+  getCommand,
 } from "../shared/helpers.js";
 import { CONVERSATIONS_PATH } from "../shared/paths.js";
 import { statSync } from "fs";
@@ -15,6 +16,12 @@ export function createBlockStaleConversationFile(state, config, log) {
     const tn = getToolName(event);
     if (tn !== "exec" && tn !== "bash" && tn !== "message") return {};
     if ((tn === "exec" || tn === "bash") && isComplianceExec(event.params))
+      return {};
+    // Self-update bypass: if the command targets CONVERSATIONS.md, let it through
+    if (
+      (tn === "exec" || tn === "bash") &&
+      /CONVERSATIONS\.md/i.test(getCommand(event.params))
+    )
       return {};
     if (state.currentTurn <= gracePeriod) return {};
 

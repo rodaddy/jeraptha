@@ -2,6 +2,7 @@ import {
   isHeartbeatSession,
   isComplianceExec,
   getToolName,
+  getCommand,
 } from "../shared/helpers.js";
 import { TASKS_PATH } from "../shared/paths.js";
 import { statSync } from "fs";
@@ -15,6 +16,13 @@ export function createBlockStaleTaskFile(state, config, log) {
     const tn = getToolName(event);
     if (tn !== "exec" && tn !== "bash" && tn !== "message") return {};
     if ((tn === "exec" || tn === "bash") && isComplianceExec(event.params))
+      return {};
+    // Self-update bypass: if the command targets TASKS.md, let it through —
+    // blocking the fix for the block creates a deadlock
+    if (
+      (tn === "exec" || tn === "bash") &&
+      /TASKS\.md/i.test(getCommand(event.params))
+    )
       return {};
     if (state.currentTurn <= gracePeriod) return {};
 
