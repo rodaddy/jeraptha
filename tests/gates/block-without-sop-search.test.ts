@@ -37,6 +37,44 @@ describe("block-without-sop-search", () => {
     expect(result.blockReason).toContain("deployment");
   });
 
+  test("allows context file recovery command even when text mentions deploy", async () => {
+    const event = createToolCallEvent("exec", {
+      command:
+        "printf '%s\\n' 'checking deploy gate loop' > ~/.openclaw/workspace/CONVERSATIONS.md",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBeUndefined();
+  });
+
+  test("blocks process command that only mentions TASKS.md", async () => {
+    const event = createToolCallEvent("exec", {
+      command: "git push origin main # TASKS.md",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("git workflow");
+  });
+
+  test("blocks mixed process and context update command", async () => {
+    const event = createToolCallEvent("exec", {
+      command:
+        "deploy-service app && printf '%s\\n' done > ~/.openclaw/workspace/CONVERSATIONS.md",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("deployment");
+  });
+
+  test("blocks command substitution in apparent context update", async () => {
+    const event = createToolCallEvent("exec", {
+      command:
+        'printf "$(deploy-service app)" > ~/.openclaw/workspace/CONVERSATIONS.md',
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("deployment");
+  });
+
   test("blocks git push without SOP search", async () => {
     const event = createToolCallEvent("exec", {
       command: "git push origin main",

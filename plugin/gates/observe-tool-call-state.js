@@ -2,6 +2,11 @@ import {
   isComplianceExec,
   getToolName,
   getCommand,
+  isReadCommand,
+  isSkillConsultCommand,
+  touchesTasksFile,
+  touchesConversationsFile,
+  touchesSkillFile,
 } from "../shared/helpers.js";
 
 export function createObserveToolCallState(state, config, log) {
@@ -29,12 +34,17 @@ export function createObserveToolCallState(state, config, log) {
       }
     }
 
+    const cmd = getCommand(params);
+    const isShell = tn === "exec" || tn === "bash";
+    const readsCommand = isShell && isReadCommand(cmd);
+    const skillConsultCommand = isShell && isSkillConsultCommand(cmd);
+
     if (tn === "message") {
       state.toolCallsSinceMessage = 0;
       log.info("message send", { turn: state.currentTurn });
     }
 
-    if ((tn === "exec" || tn === "bash") && !isComplianceExec(params)) {
+    if (isShell && !isComplianceExec(params)) {
       state.toolCallsSinceMessage++;
       log.debug("tool call count incremented", {
         toolCallsSinceMessage: state.toolCallsSinceMessage,
@@ -42,25 +52,23 @@ export function createObserveToolCallState(state, config, log) {
     }
 
     if (
-      ((tn === "exec" || tn === "bash") &&
-        /\bcat\b.*SKILL/i.test(getCommand(params))) ||
-      (tn === "read" && /SKILL/i.test(params?.path || ""))
+      skillConsultCommand ||
+      (tn === "read" && touchesSkillFile(params?.path || ""))
     ) {
       state.skillConsultedThisTurn = true;
     }
 
-    const rcmd = getCommand(params);
     if (
-      (tn === "read" && /TASKS\.md/i.test(params?.path)) ||
-      /cat.*TASKS\.md/i.test(rcmd)
+      (tn === "read" && touchesTasksFile(params?.path)) ||
+      (readsCommand && touchesTasksFile(cmd))
     )
       state.tasksReadThisSession = true;
     if (
-      (tn === "read" && /CONVERSATIONS\.md/i.test(params?.path)) ||
-      /cat.*CONVERSATIONS\.md/i.test(rcmd)
+      (tn === "read" && touchesConversationsFile(params?.path)) ||
+      (readsCommand && touchesConversationsFile(cmd))
     )
       state.conversationsReadThisSession = true;
-    if (/open-brain.*(session_load|search_brain|search_all)/i.test(rcmd))
+    if (/open-brain.*(session_load|search_brain|search_all)/i.test(cmd))
       state.obContextLoadedThisSession = true;
 
     // Track review agent spawns and pr-investigator usage
@@ -78,10 +86,7 @@ export function createObserveToolCallState(state, config, log) {
           log.info("review agent spawned (not pr-investigator)");
         }
       }
-      if (
-        (tn === "exec" || tn === "bash") &&
-        /\bpr[_-]investigator\b/i.test(rcmd)
-      ) {
+      if (isShell && /\bpr[_-]investigator\b/i.test(cmd)) {
         state.prDetectedIds.forEach((id) => state.prInvestigatedIds.add(id));
         log.info("pr-investigator invoked via exec", {
           investigated: state.prInvestigatedIds.size,

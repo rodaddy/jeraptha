@@ -20,6 +20,62 @@ export const getMessages = (event) =>
 
 export const getMessageText = (params) => params?.text || params?.content || "";
 
+const stripQuotedText = (value = "") => value.replace(/'[^']*'|"[^"]*"/g, '""');
+
+const workspacePath = String.raw`(?:~\/\.openclaw\/workspace|\/[^\s"']*\.openclaw\/workspace|\/workspace)`;
+const tasksPathPattern = new RegExp(
+  String.raw`(?:^|[\s"'=])${workspacePath}\/TASKS\.md(?=$|[\s"'])`,
+  "i",
+);
+const conversationsPathPattern = new RegExp(
+  String.raw`(?:^|[\s"'=])${workspacePath}\/CONVERSATIONS\.md(?=$|[\s"'])`,
+  "i",
+);
+const skillPathPattern = new RegExp(
+  String.raw`(?:^|[\s"'=])${workspacePath}\/(?:SKILL(?:-INDEX)?|SKILL-INDEX)\.md(?=$|[\s"'])`,
+  "i",
+);
+
+export const touchesTasksFile = (value = "") => tasksPathPattern.test(value);
+
+export const touchesConversationsFile = (value = "") =>
+  conversationsPathPattern.test(value);
+
+export const touchesSkillFile = (value = "") => skillPathPattern.test(value);
+
+export const touchesContextFile = (value = "") =>
+  touchesTasksFile(value) || touchesConversationsFile(value);
+
+export const hasShellControl = (cmd = "") => {
+  if (/(?:[\r\n]|`|\$\(|<\(|>\(|(?:^|\s)&(?:\s|$))/.test(cmd)) return true;
+  return /(?:&&|\|\||;|\|)/.test(stripQuotedText(cmd));
+};
+
+const contextTargetPattern = String.raw`["']?${workspacePath}\/(?:TASKS|CONVERSATIONS)\.md["']?`;
+
+export const isReadCommand = (cmd = "") =>
+  !/(?:>|>>)/.test(cmd) &&
+  /^\s*(?:cat|nl|head|tail|less|more|rg|grep|bat)\b/i.test(cmd);
+
+export const isWriteCommand = (cmd = "") =>
+  new RegExp(
+    String.raw`^\s*tee(?:\s+(?:-[a-zA-Z]+|--append))*\s+${contextTargetPattern}\s*$`,
+    "i",
+  ).test(cmd) ||
+  new RegExp(
+    String.raw`^\s*(?:printf|echo|cat)\b[\s\S]*(?:>|>>)\s*${contextTargetPattern}\s*$`,
+    "i",
+  ).test(cmd) ||
+  false;
+
+export const isContextRecoveryCommand = (cmd = "") =>
+  !hasShellControl(cmd) &&
+  touchesContextFile(cmd) &&
+  (isReadCommand(cmd) || isWriteCommand(cmd));
+
+export const isSkillConsultCommand = (cmd = "") =>
+  !hasShellControl(cmd) && touchesSkillFile(cmd) && isReadCommand(cmd);
+
 /**
  * Creates a structured, leveled logger for a single gate.
  *

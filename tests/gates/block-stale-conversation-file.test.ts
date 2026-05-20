@@ -79,4 +79,21 @@ describe("block-stale-conversation-file", () => {
     expect(result.block).toBe(true);
     expect(result.blockReason).toContain("git status");
   });
+
+  test("does not bypass stale gate for command that only mentions CONVERSATIONS.md", async () => {
+    const event = createToolCallEvent("exec", {
+      command: "docker compose up -d # CONVERSATIONS.md",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("CONVERSATIONS GATE");
+  });
+
+  test("allows strict CONVERSATIONS.md recovery command when stale", async () => {
+    const event = createToolCallEvent("exec", {
+      command: "printf '%s\\n' status > ~/.openclaw/workspace/CONVERSATIONS.md",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBeUndefined();
+  });
 });

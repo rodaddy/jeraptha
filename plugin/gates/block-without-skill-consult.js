@@ -3,6 +3,9 @@ import {
   isHeartbeatSession,
   isComplianceExec,
   getToolName,
+  getCommand,
+  isContextRecoveryCommand,
+  isSkillConsultCommand,
 } from "../shared/helpers.js";
 
 export function createBlockWithoutSkillConsult(state, config, log) {
@@ -25,7 +28,11 @@ export function createBlockWithoutSkillConsult(state, config, log) {
       log.allow(tn, "compliance/grace/skill-consulted bypass");
       return {};
     }
-    const cmd = event.params?.command || event.params?.cmd || "";
+    const cmd = getCommand(event.params);
+    if (isContextRecoveryCommand(cmd) || isSkillConsultCommand(cmd)) {
+      log.allow(tn, "context/skill file recovery command");
+      return {};
+    }
     const match = SKILL_OPS.find(([p]) => p.test(cmd));
     if (!match) {
       log.allow(tn, "no skill-ops pattern matched");

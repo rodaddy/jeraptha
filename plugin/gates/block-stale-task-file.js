@@ -3,6 +3,7 @@ import {
   isComplianceExec,
   getToolName,
   getCommand,
+  isContextRecoveryCommand,
 } from "../shared/helpers.js";
 import { TASKS_PATH } from "../shared/paths.js";
 import { statSync } from "fs";
@@ -29,7 +30,7 @@ export function createBlockStaleTaskFile(state, config, log) {
     // blocking the fix for the block creates a deadlock
     if (
       (tn === "exec" || tn === "bash") &&
-      /TASKS\.md/i.test(getCommand(event.params))
+      isContextRecoveryCommand(getCommand(event.params))
     ) {
       log.allow(tn, "self-update targeting TASKS.md");
       return {};
@@ -48,6 +49,7 @@ export function createBlockStaleTaskFile(state, config, log) {
     try {
       const stat = statSync(TASKS_PATH);
       if (Date.now() - stat.mtimeMs < 60000) {
+        state.lastTasksWriteTurn = state.currentTurn;
         log.allow(tn, "TASKS.md recently modified on disk");
         return {};
       }

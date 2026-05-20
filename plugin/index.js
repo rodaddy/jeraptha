@@ -1,5 +1,5 @@
 // Jeraptha Behavioral Enforcement Plugin for OpenClaw
-// v3.0.0 -- 21 hooks, modular architecture
+// v3.1.1 -- 22 hooks, strict context recovery
 //
 // See docs/architecture.md for the full priority map and event flow.
 // Each gate is a separate module in gates/, injections/, or events/.
@@ -169,7 +169,7 @@ const plugin = {
     );
 
     api.logger.info(
-      `[jeraptha] registered: 15 before_tool_call (14 blocking + 1 tracker) + 5 before_prompt_build + 1 message_received + 1 message_sending (22 Jeraptha v3.1.0 hooks)`,
+      `[jeraptha] registered: 15 before_tool_call (14 blocking + 1 tracker) + 5 before_prompt_build + 1 message_received + 1 message_sending (22 Jeraptha v3.1.1 hooks)`,
     );
   },
 };

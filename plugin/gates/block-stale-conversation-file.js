@@ -3,6 +3,7 @@ import {
   isComplianceExec,
   getToolName,
   getCommand,
+  isContextRecoveryCommand,
 } from "../shared/helpers.js";
 import { CONVERSATIONS_PATH } from "../shared/paths.js";
 import { statSync } from "fs";
@@ -28,7 +29,7 @@ export function createBlockStaleConversationFile(state, config, log) {
     // Self-update bypass: if the command targets CONVERSATIONS.md, let it through
     if (
       (tn === "exec" || tn === "bash") &&
-      /CONVERSATIONS\.md/i.test(getCommand(event.params))
+      isContextRecoveryCommand(getCommand(event.params))
     ) {
       log.allow(tn, "self-update targeting CONVERSATIONS.md");
       return {};
@@ -48,6 +49,7 @@ export function createBlockStaleConversationFile(state, config, log) {
     try {
       const stat = statSync(CONVERSATIONS_PATH);
       if (Date.now() - stat.mtimeMs < 120000) {
+        state.lastConversationsWriteTurn = state.currentTurn;
         log.allow(tn, "CONVERSATIONS.md recently modified on disk");
         return {};
       }

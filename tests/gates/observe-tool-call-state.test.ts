@@ -93,6 +93,15 @@ describe("observe-tool-call-state", () => {
     expect(state.skillConsultedThisTurn).toBe(true);
   });
 
+  test("tracks skill consultation via nl command", async () => {
+    expect(state.skillConsultedThisTurn).toBe(false);
+    const event = createToolCallEvent("exec", {
+      command: "nl -ba /workspace/SKILL-INDEX.md",
+    });
+    await handler(event, createMockContext());
+    expect(state.skillConsultedThisTurn).toBe(true);
+  });
+
   test("tracks OB context load via session_load command", async () => {
     expect(state.obContextLoadedThisSession).toBe(false);
     const event = createToolCallEvent("exec", {
@@ -108,6 +117,92 @@ describe("observe-tool-call-state", () => {
     const event = createToolCallEvent("read", { path: "/workspace/TASKS.md" });
     await handler(event, createMockContext());
     expect(state.tasksReadThisSession).toBe(true);
+  });
+
+  test("tracks TASKS.md read via cat command", async () => {
+    expect(state.tasksReadThisSession).toBe(false);
+    state.lastTasksWriteTurn = 2;
+    const event = createToolCallEvent("exec", {
+      command: "cat ~/.openclaw/workspace/TASKS.md",
+    });
+    await handler(event, createMockContext());
+    expect(state.tasksReadThisSession).toBe(true);
+    expect(state.lastTasksWriteTurn).toBe(2);
+  });
+
+  test("tracks CONVERSATIONS.md read via nl command", async () => {
+    expect(state.conversationsReadThisSession).toBe(false);
+    state.lastConversationsWriteTurn = 3;
+    const event = createToolCallEvent("exec", {
+      command: "nl -ba ~/.openclaw/workspace/CONVERSATIONS.md",
+    });
+    await handler(event, createMockContext());
+    expect(state.conversationsReadThisSession).toBe(true);
+    expect(state.lastConversationsWriteTurn).toBe(3);
+  });
+
+  test("does not track mixed skill read and ops command as skill consult", async () => {
+    expect(state.skillConsultedThisTurn).toBe(false);
+    const event = createToolCallEvent("exec", {
+      command:
+        "cat ~/.openclaw/workspace/SKILL-INDEX.md && docker compose up -d",
+    });
+    await handler(event, createMockContext());
+    expect(state.skillConsultedThisTurn).toBe(false);
+  });
+
+  test("does not mark TASKS.md shell write before execution succeeds", async () => {
+    state.currentTurn = 11;
+    state.lastTasksWriteTurn = 4;
+    const event = createToolCallEvent("exec", {
+      command: "printf '%s\\n' 'status' > ~/.openclaw/workspace/TASKS.md",
+    });
+    await handler(event, createMockContext());
+    expect(state.lastTasksWriteTurn).toBe(4);
+    expect(state.tasksReadThisSession).toBe(false);
+  });
+
+  test("does not track read redirected away as TASKS.md write", async () => {
+    state.currentTurn = 11;
+    state.lastTasksWriteTurn = 4;
+    const event = createToolCallEvent("exec", {
+      command: "cat ~/.openclaw/workspace/TASKS.md > /dev/null",
+    });
+    await handler(event, createMockContext());
+    expect(state.lastTasksWriteTurn).toBe(4);
+  });
+
+  test("does not track non-workspace TASKS.md mention as context write", async () => {
+    state.currentTurn = 11;
+    state.lastTasksWriteTurn = 4;
+    const event = createToolCallEvent("exec", {
+      command: "echo x > /tmp/out # TASKS.md",
+    });
+    await handler(event, createMockContext());
+    expect(state.lastTasksWriteTurn).toBe(4);
+    expect(state.tasksReadThisSession).toBe(false);
+  });
+
+  test("does not mark CONVERSATIONS.md shell write before execution succeeds", async () => {
+    state.currentTurn = 12;
+    state.lastConversationsWriteTurn = 5;
+    const event = createToolCallEvent("bash", {
+      command: "tee ~/.openclaw/workspace/CONVERSATIONS.md",
+    });
+    await handler(event, createMockContext());
+    expect(state.lastConversationsWriteTurn).toBe(5);
+    expect(state.conversationsReadThisSession).toBe(false);
+  });
+
+  test("does not mark CONVERSATIONS.md shell append before execution succeeds", async () => {
+    state.currentTurn = 13;
+    state.lastConversationsWriteTurn = 5;
+    const event = createToolCallEvent("bash", {
+      command: "tee -a ~/.openclaw/workspace/CONVERSATIONS.md",
+    });
+    await handler(event, createMockContext());
+    expect(state.lastConversationsWriteTurn).toBe(5);
+    expect(state.conversationsReadThisSession).toBe(false);
   });
 
   test("tracks review agent spawn when PR context is active", async () => {

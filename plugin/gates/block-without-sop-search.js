@@ -4,6 +4,7 @@ import {
   isComplianceExec,
   getToolName,
   getCommand,
+  isContextRecoveryCommand,
 } from "../shared/helpers.js";
 
 export function createBlockWithoutSopSearch(state, config, log) {
@@ -50,6 +51,10 @@ export function createBlockWithoutSopSearch(state, config, log) {
       !isComplianceExec(params)
     ) {
       const cmd = getCommand(params);
+      if (isContextRecoveryCommand(cmd)) {
+        log.allow(tn, "context file recovery command");
+        return {};
+      }
       if (PROCESS_PATTERNS.some((p) => p.test(cmd))) {
         let taskType = "this operation";
         if (/deploy/i.test(cmd)) taskType = "deployment";

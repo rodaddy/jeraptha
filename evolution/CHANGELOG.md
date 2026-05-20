@@ -4,6 +4,23 @@
 
 ---
 
+## v3.1.1 -- 2026-05-20 -- "Gate Cascade Breaker"
+
+**Trigger: Skippy gate deadlock under high context.** Context, task, conversation, SOP, and skill gates cascaded until the agent could not update context, compact, or send a useful status.
+
+### Fixed
+- Context recovery commands are now strict, workspace-scoped, and single-purpose.
+- Stale TASKS/CONVERSATIONS gates now use the same strict recovery predicate instead of raw filename matching.
+- Shell reads no longer count as writes or refresh write-turn state.
+- Shell writes no longer update freshness before execution succeeds; disk mtime repair handles successful updates afterward.
+- Skill consult detection now requires content reads of workspace skill files, not `ls`, wrong-path files, comments, or metadata touches.
+- Recovery bypasses reject shell control, command substitution, mixed commands, executable read tools, `sed`/`perl`, runtime code writes, and wrong-path context files.
+
+### Validation
+- Review swarm ran correctness, adversarial, quality, security, general, Skippy SME, and OpenClaw/Jeraptha SME lanes across multiple rounds.
+- Focused regression suite: 88 pass, 0 fail.
+- Full suite: 269 pass, 0 fail.
+
 ## v3.0.0 -- 2026-05-20 -- "No More Mushrooms"
 
 **Trigger: The mushroom incident.** Agent ran Python's `datetime`, got "Saturday" for May 16, and confidently told the user they were wrong about their own data -- three times. The agent had rules telling it to verify. It ignored them. Rules that don't block get ignored.

@@ -81,4 +81,21 @@ describe("block-stale-task-file", () => {
     expect(result.block).toBe(true);
     expect(result.blockReason).toContain("bun run test:integration");
   });
+
+  test("does not bypass stale gate for command that only mentions TASKS.md", async () => {
+    const event = createToolCallEvent("exec", {
+      command: "docker compose up -d # TASKS.md",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("TASK GATE");
+  });
+
+  test("allows strict TASKS.md recovery command when stale", async () => {
+    const event = createToolCallEvent("exec", {
+      command: "printf '%s\\n' status > ~/.openclaw/workspace/TASKS.md",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBeUndefined();
+  });
 });
