@@ -3,6 +3,9 @@
   "name": "Jeraptha Behavioral Enforcement",
   "description": "21 behavioral enforcement hooks for OpenClaw agents. 15 before_tool_call (14 blocking + 1 tracker) + 4 before_prompt_build + 1 message_received + 1 message_sending. v3.0: modular architecture, contradiction-check gate, praise-without-review gate, full test suite.",
   "version": "3.0.0",
+  "activation": {
+    "onStartup": true
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,

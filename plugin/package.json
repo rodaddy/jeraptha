@@ -1,1 +1,8 @@
-{ "type": "module" }
+{
+  "name": "jeraptha",
+  "version": "3.1.0",
+  "type": "module",
+  "openclaw": {
+    "extensions": ["./index.js"]
+  }
+}
