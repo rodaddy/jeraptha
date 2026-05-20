@@ -1,6 +1,6 @@
 import { QUESTION_PATTERNS, PR_CONTEXT_PATTERNS } from "../shared/constants.js";
 
-const PR_SKILL_REMINDER = `[JERAPTHA PR ENFORCEMENT] A PR or code review was detected in the conversation. You MUST spawn /pr-investigator as a SUBAGENT (sessions_spawn) to review the actual code before responding with any assessment. Do NOT run it inline -- stay available on the channel while it works. Do NOT praise, approve, or comment on code quality without the investigator results. The praise gate WILL block you if you try.`;
+const PR_SKILL_REMINDER = `[JERAPTHA PR ENFORCEMENT] A PR or code review was detected in the conversation. You MUST spawn /pr-investigator as a SUBAGENT (sessions_spawn) for EACH PR to review the actual code before responding with any assessment. Do NOT run it inline -- stay available on the channel while it works. Post status updates for long-running investigations ("investigating PR #X, checking Y so far"). Do NOT praise, approve, or comment on code quality without the investigator results. The praise gate WILL block you if you try.`;
 
 const PR_URL_PATTERN = /github\.com\/[^\s)]+\/pull\/\d+/gi;
 const PR_NUMBER_PATTERN = /\bPR\s*#?(\d+)\b/gi;
