@@ -29,7 +29,7 @@ describe("scan-message-context", () => {
     expect(state.recentUserMessages).toContain("What is the IP of the server?");
   });
 
-  test("detects PR context from GitHub URL", async () => {
+  test("detects PR context and injects skill reminder", async () => {
     const event = createPromptBuildEvent("", [
       {
         role: "user",
@@ -37,9 +37,12 @@ describe("scan-message-context", () => {
       },
     ]);
 
-    await handler(event, createMockContext());
+    const result = await handler(event, createMockContext());
 
     expect(state.prReviewContext).toBe(true);
+    expect(result.appendSystemContext).toContain("pr-investigator");
+    expect(result.appendSystemContext).toContain("SUBAGENT");
+    expect(result.appendSystemContext).toContain("stay available");
   });
 
   test("detects PR context from PR number pattern", async () => {
@@ -47,9 +50,10 @@ describe("scan-message-context", () => {
       { role: "user", content: "Check PR #123 when you get a chance" },
     ]);
 
-    await handler(event, createMockContext());
+    const result = await handler(event, createMockContext());
 
     expect(state.prReviewContext).toBe(true);
+    expect(result.appendSystemContext).toBeDefined();
   });
 
   test("detects PR context from 'code review' mention", async () => {
@@ -57,9 +61,10 @@ describe("scan-message-context", () => {
       { role: "user", content: "I need a code review on the auth module" },
     ]);
 
-    await handler(event, createMockContext());
+    const result = await handler(event, createMockContext());
 
     expect(state.prReviewContext).toBe(true);
+    expect(result.appendSystemContext).toBeDefined();
   });
 
   test("detects factual question from user message", async () => {

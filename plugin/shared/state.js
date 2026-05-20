@@ -62,6 +62,8 @@ export function createState() {
     // Verify-before-praise gate
     reviewPromisedThisTurn: false,
     reviewAgentSpawned: false,
+    prInvestigatedIds: new Set(),
+    prDetectedIds: new Set(),
     prReviewContext: false,
   };
 }

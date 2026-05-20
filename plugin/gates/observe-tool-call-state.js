@@ -63,10 +63,30 @@ export function createObserveToolCallState(state, config, log) {
     if (/open-brain.*(session_load|search_brain|search_all)/i.test(rcmd))
       state.obContextLoadedThisSession = true;
 
-    // Track review agent spawns for block-praise-without-review gate
-    if (tn === "sessions_spawn" && state.prReviewContext) {
-      state.reviewAgentSpawned = true;
-      log.info("review agent spawned during PR context");
+    // Track review agent spawns and pr-investigator usage
+    if (state.prReviewContext) {
+      if (tn === "sessions_spawn") {
+        state.reviewAgentSpawned = true;
+        if (
+          /pr[_-]investigator/i.test(params?.agentId || params?.label || "")
+        ) {
+          state.prDetectedIds.forEach((id) => state.prInvestigatedIds.add(id));
+          log.info("pr-investigator spawned via sessions_spawn", {
+            investigated: state.prInvestigatedIds.size,
+          });
+        } else {
+          log.info("review agent spawned (not pr-investigator)");
+        }
+      }
+      if (
+        (tn === "exec" || tn === "bash") &&
+        /\bpr[_-]investigator\b/i.test(rcmd)
+      ) {
+        state.prDetectedIds.forEach((id) => state.prInvestigatedIds.add(id));
+        log.info("pr-investigator invoked via exec", {
+          investigated: state.prInvestigatedIds.size,
+        });
+      }
     }
 
     return {};

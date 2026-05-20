@@ -13,6 +13,10 @@ export function createBlockMessageWithoutContext(state, config, log) {
       log.skip(tn, tn !== "message" ? "not message" : "within grace period");
       return {};
     }
+    if (state.prReviewContext) {
+      log.skip(tn, "PR review context active");
+      return {};
+    }
     // If the agent has been doing heavy tool work (past commGateThreshold), defer to
     // the communication gate (block-silent-work-streak) instead of blocking here.
     // This prevents double-blocking on the same condition.
