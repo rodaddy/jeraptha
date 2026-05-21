@@ -7,6 +7,7 @@ import {
   getMessageText,
   hasShellControl,
   isContextRecoveryCommand,
+  isContextHeredocWriteCommand,
   isSkillConsultCommand,
   isWriteCommand,
   touchesTasksFile,
@@ -127,6 +128,29 @@ describe("context recovery helpers", () => {
     expect(isWriteCommand("echo x > /tmp/out # TASKS.md")).toBe(false);
   });
 
+  test("allows heredoc writes only to workspace context files", () => {
+    expect(
+      isContextHeredocWriteCommand(
+        "cat > ~/.openclaw/workspace/CONVERSATIONS.md <<'EOF'\nDeployment note only, not an operation.\nEOF",
+      ),
+    ).toBe(true);
+    expect(
+      isContextRecoveryCommand(
+        "tee -a /workspace/TASKS.md <<EOF\nStatus: deployment reviewed.\nEOF",
+      ),
+    ).toBe(true);
+    expect(
+      isContextRecoveryCommand(
+        "cat <<'EOF' > ~/.openclaw/workspace/CONVERSATIONS.md\nDeployment note only, not an operation.\nEOF",
+      ),
+    ).toBe(true);
+    expect(
+      isContextHeredocWriteCommand(
+        "cat > /tmp/CONVERSATIONS.md <<'EOF'\nDeployment note.\nEOF",
+      ),
+    ).toBe(false);
+  });
+
   test("rejects mixed or subprocess-capable recovery commands", () => {
     expect(
       isContextRecoveryCommand(
@@ -161,5 +185,35 @@ describe("context recovery helpers", () => {
         'node -e \'fs.writeFileSync("~/.openclaw/workspace/TASKS.md", "deploy")\'',
       ),
     ).toBe(false);
+    expect(
+      isContextRecoveryCommand(
+        "deploy-service app && cat > ~/.openclaw/workspace/CONVERSATIONS.md <<'EOF'\ndone\nEOF",
+      ),
+    ).toBe(false);
+    expect(
+      isContextRecoveryCommand(
+        "cat > ~/.openclaw/workspace/TASKS.md <<EOF > /tmp/pwn\nbody\nEOF",
+      ),
+    ).toBe(false);
+    expect(
+      isContextRecoveryCommand(
+        "cat > ~/.openclaw/workspace/TASKS.md <<EOF 2> /tmp/pwn\nbody\nEOF",
+      ),
+    ).toBe(false);
+    expect(
+      isContextRecoveryCommand(
+        "cat > ~/.openclaw/workspace/TASKS.md <<EOF <<< x\nbody\nEOF",
+      ),
+    ).toBe(false);
+    expect(
+      isContextRecoveryCommand(
+        "cat > ~/.openclaw/workspace/TASKS.md <<EOF\n$(deploy-service app)\nEOF",
+      ),
+    ).toBe(false);
+    expect(
+      isContextRecoveryCommand(
+        "cat > ~/.openclaw/workspace/TASKS.md <<'EOF'\nliteral text with | ; && $(not executed)\nEOF",
+      ),
+    ).toBe(true);
   });
 });
