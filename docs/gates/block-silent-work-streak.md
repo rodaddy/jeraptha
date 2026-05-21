@@ -24,7 +24,7 @@ Agents go dark for long stretches -- running dozens of commands without posting 
 | State Field | Purpose |
 |---|---|
 | `currentTurn` | Grace period check |
-| `toolCallsSinceMessage` | Counter reset on each message send, incremented on each exec/bash |
+| `toolCallsSinceMessage` | Counter reset on message delivery, incremented on each exec/bash |
 
 ## Config
 
@@ -47,7 +47,7 @@ The block message includes what the agent was about to run, so it can resume aft
 
 **Blocked:** Agent runs 9 exec calls in a row without posting a message. The 10th exec is blocked.
 
-**Allowed:** Agent runs 5 exec calls, posts a status message (counter resets), then runs 5 more.
+**Allowed:** Agent runs 5 exec calls, delivers a status message (counter resets), then runs 5 more.
 
 **Allowed:** Agent runs `mcp2cli open-brain search` (compliance call, exempt).
 

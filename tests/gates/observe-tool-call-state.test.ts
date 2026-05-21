@@ -52,11 +52,11 @@ describe("observe-tool-call-state", () => {
     expect(state.conversationsReadThisSession).toBe(true);
   });
 
-  test("resets toolCallsSinceMessage on message send", async () => {
+  test("does not reset toolCallsSinceMessage before message gates pass", async () => {
     state.toolCallsSinceMessage = 15;
     const event = createToolCallEvent("message", { text: "status update" });
     await handler(event, createMockContext());
-    expect(state.toolCallsSinceMessage).toBe(0);
+    expect(state.toolCallsSinceMessage).toBe(15);
   });
 
   test("increments toolCallsSinceMessage for non-compliance exec", async () => {

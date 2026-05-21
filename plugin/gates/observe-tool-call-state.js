@@ -39,11 +39,6 @@ export function createObserveToolCallState(state, config, log) {
     const readsCommand = isShell && isReadCommand(cmd);
     const skillConsultCommand = isShell && isSkillConsultCommand(cmd);
 
-    if (tn === "message") {
-      state.toolCallsSinceMessage = 0;
-      log.info("message send", { turn: state.currentTurn });
-    }
-
     if (isShell && !isComplianceExec(params)) {
       state.toolCallsSinceMessage++;
       log.debug("tool call count incremented", {

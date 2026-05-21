@@ -30,13 +30,17 @@ describe("block-stale-task-file", () => {
     expect(result.blockReason).toContain("20 turns");
   });
 
-  test("blocks message after threshold turns without task file update", async () => {
+  test("allows message after threshold turns without task file update", async () => {
     const event = createToolCallEvent("message", {
       text: "Here is the result",
     });
     const result = await handler(event, createMockContext());
-    expect(result.block).toBe(true);
-    expect(result.blockReason).toContain("TASK GATE");
+    expect(result.block).toBeUndefined();
+    expect(log.entries.at(-1)).toMatchObject({
+      level: "WARN",
+      msg: "TASKS.md stale during message delivery",
+      turnsSinceUpdate: 20,
+    });
   });
 
   test("allows when within threshold", async () => {

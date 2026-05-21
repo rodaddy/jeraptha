@@ -1,5 +1,5 @@
 // Jeraptha Behavioral Enforcement Plugin for OpenClaw
-// v3.1.2 -- 22 hooks, heredoc context recovery
+// v3.1.3 -- 22 hooks, message-safe freshness gates
 //
 // See docs/architecture.md for the full priority map and event flow.
 // Each gate is a separate module in gates/, injections/, or events/.
@@ -31,9 +31,10 @@ import { createScoreAndInjectUserSentiment } from "./injections/score-and-inject
 import { createInjectStalledTaskAlert } from "./injections/inject-stalled-task-alert.js";
 import { createInjectSkillIndexPeriodically } from "./injections/inject-skill-index-periodically.js";
 
-// Events (message_received, message_sending)
+// Events (message_received, message_sending, message_sent)
 import { createResetPerTurnState } from "./events/reset-per-turn-state.js";
 import { createBreakBotToBotLoop } from "./events/break-bot-to-bot-loop.js";
+import { createTrackMessageSentState } from "./events/track-message-sent-state.js";
 
 const plugin = {
   id: "jeraptha",
@@ -167,9 +168,14 @@ const plugin = {
       createBreakBotToBotLoop(state, cfg, gl("bot-banter")),
       { priority: 120 },
     );
+    api.on(
+      "message_sent",
+      createTrackMessageSentState(state, cfg, gl("message-sent")),
+      { priority: 10 },
+    );
 
     api.logger.info(
-      `[jeraptha] registered: 15 before_tool_call (14 blocking + 1 tracker) + 5 before_prompt_build + 1 message_received + 1 message_sending (22 Jeraptha v3.1.2 hooks)`,
+      `[jeraptha] registered: 15 before_tool_call (14 blocking + 1 tracker) + 5 before_prompt_build + 1 message_received + 1 message_sending + 1 message_sent (23 Jeraptha v3.1.3 hooks)`,
     );
   },
 };

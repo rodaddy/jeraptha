@@ -55,6 +55,13 @@ export function createBlockStaleConversationFile(state, config, log) {
       }
     } catch {}
 
+    if (tn === "message") {
+      log.warn("CONVERSATIONS.md stale during message delivery", {
+        turnsSinceUpdate,
+      });
+      return {};
+    }
+
     const blocked =
       event.params?.command || event.params?.cmd || event.params?.text || tn;
     log.block(tn, "CONVERSATIONS.md stale", { turnsSinceUpdate });

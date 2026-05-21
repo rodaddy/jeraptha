@@ -55,6 +55,11 @@ export function createBlockStaleTaskFile(state, config, log) {
       }
     } catch {}
 
+    if (tn === "message") {
+      log.warn("TASKS.md stale during message delivery", { turnsSinceUpdate });
+      return {};
+    }
+
     const blocked =
       event.params?.command || event.params?.cmd || event.params?.text || tn;
     log.block(tn, "TASKS.md stale", { turnsSinceUpdate });
