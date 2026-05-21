@@ -3,6 +3,7 @@ import {
   isHeartbeatSession,
   getToolName,
   getCommand,
+  isContextHeredocWriteCommand,
 } from "../shared/helpers.js";
 
 export function createBlockDestructiveGitCommands(state, config, log) {
@@ -39,7 +40,8 @@ export function createBlockDestructiveGitCommands(state, config, log) {
       /<<-?\s*'?[A-Z_]+'?/.test(cmd) &&
       /(?:cat\s*>|tee\s+\S|>>)/.test(cmd) &&
       !/git\s+commit\s+-m\s+"\$\(cat\s+<</.test(cmd) &&
-      !/TASKS\.md|CONVERSATIONS\.md|SCORECARD\.md/i.test(cmd)
+      !isContextHeredocWriteCommand(cmd) &&
+      !/SCORECARD\.md/i.test(cmd)
     ) {
       log.block(tn, "heredoc file write", { cmd: cmd.substring(0, 80) });
       return {

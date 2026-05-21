@@ -52,6 +52,20 @@ export const hasShellControl = (cmd = "") => {
 };
 
 const contextTargetPattern = String.raw`["']?${workspacePath}\/(?:TASKS|CONVERSATIONS)\.md["']?`;
+const contextHeredocHeaders = [
+  new RegExp(
+    String.raw`^\s*cat\s+>\s*${contextTargetPattern}\s+<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1\s*$`,
+    "i",
+  ),
+  new RegExp(
+    String.raw`^\s*cat\s+<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1\s*>\s*${contextTargetPattern}\s*$`,
+    "i",
+  ),
+  new RegExp(
+    String.raw`^\s*tee(?:\s+(?:-[a-zA-Z]+|--append))*\s+${contextTargetPattern}\s+<<-?\s*(['"]?)([A-Za-z_][A-Za-z0-9_]*)\1\s*$`,
+    "i",
+  ),
+];
 
 export const isReadCommand = (cmd = "") =>
   !/(?:>|>>)/.test(cmd) &&
@@ -68,10 +82,31 @@ export const isWriteCommand = (cmd = "") =>
   ).test(cmd) ||
   false;
 
+export const isContextHeredocWriteCommand = (cmd = "") => {
+  const trimmed = String(cmd).trim();
+  const lines = trimmed.split(/\r?\n/);
+  const header = lines[0] || "";
+  if (/(?:`|\$\(|<\(|>\(|(?:^|\s)&(?:\s|$)|&&|\|\||;|\|)/.test(header)) {
+    return false;
+  }
+
+  const match = contextHeredocHeaders
+    .map((pattern) => header.match(pattern))
+    .find(Boolean);
+  if (!match) return false;
+
+  const quote = match[1] || "";
+  const delimiter = match[2];
+  const body = lines.slice(1, -1).join("\n");
+  if (!quote && /(?:`|\$\()/.test(body)) return false;
+
+  return lines.length >= 2 && lines[lines.length - 1].trim() === delimiter;
+};
+
 export const isContextRecoveryCommand = (cmd = "") =>
-  !hasShellControl(cmd) &&
   touchesContextFile(cmd) &&
-  (isReadCommand(cmd) || isWriteCommand(cmd));
+  (isContextHeredocWriteCommand(cmd) ||
+    (!hasShellControl(cmd) && (isReadCommand(cmd) || isWriteCommand(cmd))));
 
 export const isSkillConsultCommand = (cmd = "") =>
   !hasShellControl(cmd) && touchesSkillFile(cmd) && isReadCommand(cmd);

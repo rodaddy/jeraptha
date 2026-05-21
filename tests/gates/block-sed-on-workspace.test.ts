@@ -64,6 +64,15 @@ describe("block-sed-on-workspace", () => {
     expect(result.block).toBe(true);
   });
 
+  test("blocks sed on workspace file that only mentions TASKS.md", async () => {
+    const event = createToolCallEvent("exec", {
+      command: "sed -i 's/old/new/' ~/.openclaw/workspace/SOUL.md # TASKS.md",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("SED BLOCK");
+  });
+
   // --- Allowed: sed on non-workspace files ---
 
   test("allows sed on non-workspace files", async () => {

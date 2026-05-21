@@ -1,4 +1,8 @@
-import { getToolName, getCommand } from "../shared/helpers.js";
+import {
+  getToolName,
+  getCommand,
+  touchesContextFile,
+} from "../shared/helpers.js";
 
 export function createBlockSedOnWorkspace(state, config, log) {
   return async (event, ctx) => {
@@ -10,7 +14,10 @@ export function createBlockSedOnWorkspace(state, config, log) {
 
     const cmd = getCommand(event.params);
     // Allow sed on the files that other gates require agents to update
-    if (/TASKS\.md|CONVERSATIONS\.md|SCORECARD\.md/i.test(cmd)) {
+    if (
+      touchesContextFile(cmd) ||
+      /\.openclaw\/workspace\/SCORECARD\.md/i.test(cmd)
+    ) {
       log.allow(tn, "sed on allowed workspace file");
       return {};
     }

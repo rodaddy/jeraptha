@@ -115,6 +115,24 @@ describe("block-destructive-git-commands", () => {
     expect(result.blockReason).toContain("HEREDOC BLOCK");
   });
 
+  test("blocks heredoc file writes that only mention context files", async () => {
+    const event = createToolCallEvent("exec", {
+      command: "cat > /etc/config.yml <<EOF\nTASKS.md\nEOF",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBe(true);
+    expect(result.blockReason).toContain("HEREDOC BLOCK");
+  });
+
+  test("allows strict heredoc context file writes", async () => {
+    const event = createToolCallEvent("exec", {
+      command:
+        "cat <<'EOF' > ~/.openclaw/workspace/CONVERSATIONS.md\nDeployment note.\nEOF",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result).toEqual({});
+  });
+
   test("allows heredoc in git commit message", async () => {
     const event = createToolCallEvent("exec", {
       command: 'git commit -m "$(cat <<EOF\ncommit message\nEOF\n)"',

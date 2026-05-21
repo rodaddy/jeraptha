@@ -46,6 +46,15 @@ describe("block-without-sop-search", () => {
     expect(result.block).toBeUndefined();
   });
 
+  test("allows heredoc context recovery write even when body mentions deployment", async () => {
+    const event = createToolCallEvent("exec", {
+      command:
+        "cat > ~/.openclaw/workspace/CONVERSATIONS.md <<'EOF'\nDeployment notes from current turn.\nEOF",
+    });
+    const result = await handler(event, createMockContext());
+    expect(result.block).toBeUndefined();
+  });
+
   test("blocks process command that only mentions TASKS.md", async () => {
     const event = createToolCallEvent("exec", {
       command: "git push origin main # TASKS.md",

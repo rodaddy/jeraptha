@@ -4,6 +4,19 @@
 
 ---
 
+## v3.1.2 -- 2026-05-20 -- "Heredoc Recovery"
+
+**Trigger: Skippy could execute and read again after v3.1.1, but heredoc writes to CONVERSATIONS.md still tripped the SOP gate when the body mentioned deployment.**
+
+### Fixed
+- Context recovery now recognizes single-purpose `cat`/`tee` heredoc writes to workspace `TASKS.md` and `CONVERSATIONS.md`.
+- SOP gate allows those heredoc recovery writes even when the heredoc body contains process words such as deployment.
+- Mixed commands, command substitution, wrong-path context files, and non-context heredoc writes remain blocked.
+
+### Validation
+- Focused regression suite: 50 pass, 0 fail.
+- Full suite: 271 pass, 0 fail.
+
 ## v3.1.1 -- 2026-05-20 -- "Gate Cascade Breaker"
 
 **Trigger: Skippy gate deadlock under high context.** Context, task, conversation, SOP, and skill gates cascaded until the agent could not update context, compact, or send a useful status.
