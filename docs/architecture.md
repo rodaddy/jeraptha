@@ -74,6 +74,7 @@ Lower priority number = runs later. Higher = runs first. All gates within the sa
 |-------|---------|-------------|
 | message_received | reset-per-turn-state | Reset flags, increment turn, track bots |
 | message_sending (p120) | break-bot-to-bot-loop | Circuit breaker on bot-to-bot exchanges |
+| message_sent (p10) | track-message-sent-state | Reset silent-work counter only after successful delivery |
 
 ## Shared State
 

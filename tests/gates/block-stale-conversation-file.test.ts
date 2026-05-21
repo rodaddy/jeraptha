@@ -30,13 +30,17 @@ describe("block-stale-conversation-file", () => {
     expect(result.blockReason).toContain("25 turns");
   });
 
-  test("blocks message after threshold turns without conversation file update", async () => {
+  test("allows message after threshold turns without conversation file update", async () => {
     const event = createToolCallEvent("message", {
       text: "Done with the task",
     });
     const result = await handler(event, createMockContext());
-    expect(result.block).toBe(true);
-    expect(result.blockReason).toContain("CONVERSATIONS GATE");
+    expect(result.block).toBeUndefined();
+    expect(log.entries.at(-1)).toMatchObject({
+      level: "WARN",
+      msg: "CONVERSATIONS.md stale during message delivery",
+      turnsSinceUpdate: 25,
+    });
   });
 
   test("allows when within threshold", async () => {

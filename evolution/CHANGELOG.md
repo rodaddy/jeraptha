@@ -4,6 +4,22 @@
 
 ---
 
+## v3.1.3 -- 2026-05-20 -- "No Blank Replies"
+
+**Trigger: Some Discord channels showed Skippy typing and then going blank. Live logs showed stale TASKS.md freshness blocking a `message` tool call at priority 65, followed by an exact `NO_REPLY` final payload.**
+
+### Fixed
+- Stale TASKS.md and CONVERSATIONS.md freshness gates no longer hard-block `message` delivery.
+- Stale freshness still blocks `exec`/`bash` work tools after thresholds.
+- Stale message delivery is logged as a warning so stale context remains visible in debug logs.
+- `toolCallsSinceMessage` now resets on successful `message_sent`, not before message gates run, so blocked or failed messages are not counted as delivered.
+
+### Validation
+- Focused message/freshness/comms regression suite: 66 pass, 0 fail.
+- Full suite: 276 pass, 0 fail.
+- Review swarm found and verified the blocked-message state drift issue before release.
+- OpenClaw source verification: `message_sent` includes a `success` flag after channel delivery, so failed sends do not reset the silent-work counter.
+
 ## v3.1.2 -- 2026-05-20 -- "Heredoc Recovery"
 
 **Trigger: Skippy could execute and read again after v3.1.1, but heredoc writes to CONVERSATIONS.md still tripped the SOP gate when the body mentioned deployment.**
