@@ -19,7 +19,10 @@ export const INFRA_SEAT = [`${DEV_ROOT}/infra`, `${DEV_ROOT}/k3s-deploy`]
 export const CLUSTER_DENY =
   'cluster changes go to the infra seat (a board task for the infra agent, or ' +
   'the infra session): reads stay open'
-/** cluster rule: `kubectl port-forward` reads only into these namespaces, loopback only. */
+/**
+ * cluster rule: `kubectl port-forward` reads only into these namespaces, loopback only.
+ * 'browser-pool' is the author's namespace and the tests use it; replace it with yours.
+ */
 export const PORT_FORWARD_NAMESPACES = ['browser-pool']
 
 /** pr-bar rule: the one sanctioned way to open a PR (it applies your intake bar). */

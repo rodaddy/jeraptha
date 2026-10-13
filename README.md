@@ -53,13 +53,17 @@ exposes the no-tmp decision as a CLI for Codex and Pi hooks.
 
 ## Running it
 
-Needs Claude Code with plugin hooks (built and tested on 2.1.296) and Node 24
-(native TypeScript type stripping) for the CLI.
+Needs Claude Code with plugin hooks (built and tested on 2.1.296), and Node 24
+for the no-tmp CLI and its tests (they run `.ts` files through Node's native
+type stripping). The benchmark in `bench/` is plain `.mjs` and needs Node 22
+or later (see `bench/README.md`).
 
 1. Clone this repo.
 2. Edit `hooks/hooks/config.ts`: set `DEV_ROOT` and `TMP_ROOT` to your
-   workspace and scratch roots, the infra checkouts for `cluster`, your PR
-   opener for `pr-bar`, and your own `RULINGS`. Rules apply only when a
+   workspace and scratch roots, the infra checkouts and the port-forward
+   namespaces (`PORT_FORWARD_NAMESPACES`, default the author's
+   `browser-pool`) for `cluster`, your PR opener for `pr-bar`, and your own
+   `RULINGS`. Rules apply only when a
    session's cwd is under one of the roots (the worktree rule applies
    everywhere).
 3. Add the `hooks/` folder to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of
@@ -73,8 +77,11 @@ claude plugin test .
 node --test bin/rule-check.spec.ts
 ```
 
-At release: 859 of 864 plugin tests pass and all 47 CLI tests pass. The 5
-failures are in compact-save (see CHANGELOG, known issues).
+At release: 859 of 864 plugin tests pass under `claude plugin test .`, and
+all 47 CLI tests pass under `node --test bin/rule-check.spec.ts`. The plugin
+count needs Claude Code's plugin engine; plain Node cannot run those tests.
+The CLI count needs only Node 24. The 5 plugin failures are in compact-save
+(see CHANGELOG, known issues).
 
 ## What is production-proven and what is not
 

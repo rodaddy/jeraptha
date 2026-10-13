@@ -78,7 +78,8 @@ still starts at the frozen commit, so tasks do not go stale.
 
 ## 2026-10-03 result
 
-o = pass, x = fail; two characters = round 1, round 2. Full write-up,
+Column headers are the task ids of the private benchmark set (see "What is
+not here"). o = pass, x = fail; two characters = round 1, round 2. Full write-up,
 including what each failure was: `results/2026-10-03.md`.
 
 | Setting | Pass | 829 | 835 | 836 | 837 | 838 | 832 | Median s | p90 s | Calls/run |
