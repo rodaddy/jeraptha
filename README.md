@@ -1,189 +1,118 @@
-# 🪲 Jeraptha -- Behavioral Enforcement for OpenClaw Agents
+# Jeraptha v4
 
-*"Trust the beetle. The beetle tracks everything."*
+Rulings enforced as tested hooks, not as prose.
 
-Named after the Jeraptha -- the beetle-like Tier 2 species from the Expeditionary Force universe who obsessively gamble on every outcome, run a nationalized compliance system, and are the only species with claws. Running on Open**Claw**. Get it?
+Jeraptha is a set of Claude Code hooks that turn an operator's standing
+rulings ("never write to /tmp", "every agent commit says which model made
+it", "one visible worker per lane") into refusals, rewrites and loaded text.
+Each rule is a small TypeScript module with its own tests. When a rule
+refuses a call, it names the command to run instead.
 
-## What Is This?
+It also ships the benchmark the author used to decide which model and effort
+each kind of worker lane gets (`bench/`).
 
-Your AI agent is a dumdum. It drops tasks, ignores SOPs, goes silent for 15 minutes, and then pretends everything is fine. You know it. It knows it. Nobody is doing anything about it.
+## Why it exists
 
-Jeraptha fixes that.
+Agents read rules, agree with them, and break them an hour later, usually in
+a one-line reflex such as `> /tmp/out.txt`. Longer prompt files made it worse,
+not better. What held was moving each rule that kept failing out of prose and
+into a hook:
 
-It's a behavioral enforcement framework that brings Jeraptha-level discipline to OpenClaw agents:
+- **Deterministic first.** If a script can decide it, the hook decides it.
+  Prose is kept for judgment calls, and even those are loaded into every turn
+  by a hook (`rulings`) instead of living in a file nobody opens.
+- **Refuse with the fix.** A refusal that says only "no" makes the agent try
+  variants. Each refusal here names the right command.
+- **Every rule has a test.** A rule that cannot fail a test is not a rule.
+- **Not a security boundary.** These hooks read shell text and can be evaded
+  on purpose. They catch mistakes. Safety gates (destructive deletes,
+  secrets) belong in your harness's permission settings, which still run
+  beneath every call these hooks pass on.
 
-- **The Ethics and Compliance Office (ECO)** -- Hooks that hard-block bad behavior. The agent physically cannot proceed without following the rules. Just like the Jeraptha ECO enforces gambling law, these hooks enforce operational law.
+## What is in it
 
-- **The Wagering System** -- A behavioral scorecard that tracks every outcome. Positive reinforcement when things go well, negative when they don't. The Jeraptha bet on everything. We score everything.
+`hooks/` is a Claude Code plugin (a "mod" of function hooks). Twelve rules:
 
-- **Flash Gold Priority** -- Task tracking with stale detection. If a task goes dark for 2 heartbeats (10 min), it gets flagged 🚨 STALLED and the agent is forced to address it. Like a Flash Gold message -- highest urgency, no ignoring it.
+| Rule | What it does |
+|---|---|
+| worktree | Denies `git worktree` in any spelling and the worktree tools; names the `wt` (worktrunk) command instead. |
+| literal-word | Rewrites `X=git; $X status` to the literal command so later gates judge what actually runs. |
+| identity | Adds `Agent: claude-code · <model> · <seat>` to commits and refuses an agent commit without it. |
+| cluster | `kubectl`/`helm` reads stay open everywhere; changes only from the configured infra checkouts. |
+| model-gate | Denies `claude -p` headless runs and an opt-in-only model unless an env flag is set. |
+| visible-lanes | One agent per Workflow call, so every worker is its own visible row; no hidden background agents. |
+| no-tmp | Denies writes, redirects, `mktemp` and `cd` into `/tmp` and friends, including through symlinks. Reads stay open. |
+| pr-bar | Denies opening a forge PR except through your PR-opener script. |
+| lane-budget | Denies polling loops: `ScheduleWakeup` under 30 minutes and crons more often than every 30 minutes. |
+| rulings | Loads your one-line judgment rulings into the system prompt every turn. |
+| compact-save | Before a compaction, writes a handoff file (your verbatim asks plus a model summary) and can roll over to a fresh session instead. |
+| worktree-reaper | Removes linked worktrees whose branch is pushed and that hold nothing unsaved. |
 
-- **Regional Patrol** -- The heartbeat system. Every 5 minutes, it sweeps all channels, checks all tasks, enforces SOP compliance, and kicks the agent back on track. Underfunded and running on obsolete hardware? Maybe. But it gets the job done.
+`hooks/SPEC.md` is the full behaviour of each rule. `hooks/bin/rule-check.ts`
+exposes the no-tmp decision as a CLI for Codex and Pi hooks.
 
-## Quick Start
+## Running it
 
-```bash
-# Clone the beetles
-git clone git@github.com:<your-username>/jeraptha.git
-cd jeraptha
+Needs Claude Code with plugin hooks (built and tested on 2.1.296) and Node 24
+(native TypeScript type stripping) for the CLI.
 
-# Deploy the ECO to your OpenClaw instance
-./install.sh --workspace ~/.openclaw/workspace --hooks ~/.openclaw/hooks
+1. Clone this repo.
+2. Edit `hooks/hooks/config.ts`: set `DEV_ROOT` and `TMP_ROOT` to your
+   workspace and scratch roots, the infra checkouts for `cluster`, your PR
+   opener for `pr-bar`, and your own `RULINGS`. Rules apply only when a
+   session's cwd is under one of the roots (the worktree rule applies
+   everywhere).
+3. Add the `hooks/` folder to `CLAUDE_CODE_PLUGIN_DIRS` in the `env` block of
+   your Claude Code settings. It hot-reloads on save.
 
-# Or dry-run to see what the beetles would do
-./install.sh --dry-run
+Check and test from `hooks/`:
+
+```sh
+claude plugin validate .
+claude plugin test .
+node --test bin/rule-check.spec.ts
 ```
 
-## The ECO (Ethics and Compliance Office)
+At release: 859 of 864 plugin tests pass and all 47 CLI tests pass. The 5
+failures are in compact-save (see CHANGELOG, known issues).
 
-Hard-block hooks that enforce operational law. The agent can't ignore these -- the tool call gets rejected.
+## What is production-proven and what is not
 
-| Hook | Codename | What It Enforces |
-|------|----------|-----------------|
-| `no-deaf-polls` | 🔇 Antenna Block | Blocks `process poll` > 10s. Agent stays responsive. Never goes deaf. |
-| `sop-gate` | 📖 Compliance Check | Blocks process-driven work without SOP search. No winging it. |
-| `ob-gate` | 🧠 Intel First | Blocks factual questions without checking the knowledge base first. |
-| `no-self-surgery` | 🔒 Carapace Lock | Blocks agent from editing its own config. No self-modification. |
+- Proven: the twelve rules have run in the author's Claude Code sessions on
+  his own machine since early October 2026, under his own paths.
+- Not proven: this public build. Paths, the infra seat list, the PR-opener
+  name and the rulings text moved into `config.ts` for release; the tests pass
+  against its defaults, but nobody else has run it yet.
+- The rulings, deny messages and examples are the author's (dated, some name
+  him). Replace them with your own.
 
-## The Wagering System
+## What it does not do
 
-Behavioral scoring with verbal feedback. Not just numbers -- actual context about what went right or wrong.
+- It is not a sandbox and not a security control. See "Not a security
+  boundary" above.
+- It does not work in other harnesses except the no-tmp CLI.
+- It does not score or reward the agent. v3 did; v4 dropped it.
+- It does not ship the author's private rules that only make sense inside his
+  fleet (a forge admin-token gate, a forge API wrapper gate, an LSP-memory
+  handover). They are listed in `hooks/SPEC.md`.
 
-| Signal | Points | The Jeraptha Would Say... |
-|--------|--------|--------------------------|
-| Task completed with full detail | +2 | "Favorable odds confirmed. Payout authorized." |
-| Used tmux, stayed responsive | +2 | "Antenna discipline maintained. Bet honored." |
-| Strong user praise | +3 | "The monkey is pleased. Odds improving." |
-| Task went STALLED | -3 | "Wager defaulted. ECO notified." |
-| User had to ask "where are you" | -3 | "Antenna failure. Compliance violation." |
-| Didn't follow SOP | -2 | "Unauthorized deviation. ECO investigating." |
+## bench/
 
-The scorecard changes the agent's enforcement mode:
+The worker-model benchmark: replay finished tasks from a frozen commit, give
+every model the same frozen brief, and score each run with hidden checks it
+never sees. The 2026-10-03 round (6 tasks, 6 settings, 2 rounds) is in
+`bench/results/`. Its task repo is private, so the harness ships with an
+example task instead. See `bench/README.md`.
 
-| Score | Mode | Jeraptha Equivalent |
-|-------|------|-------------------|
-| > 10 | 🟢 Trusted | Captain's discretion |
-| 0-10 | 🟡 Standard | Normal patrol operations |
-| -5 to 0 | 🟠 Warning | ECO audit in progress |
-| < -5 | 🔴 Probation | Regional Patrol takeover -- every action monitored |
+## History
 
-## Flash Gold Priority System
+v1 to v3 were an OpenClaw plugin for a single long-running agent: 21 gates, a
+behavioral scorecard and a heartbeat. v4 is a rewrite for Claude Code and many
+short-lived agents. See `CHANGELOG.md`.
 
-Task tracking that actually works. Every task lives in TASKS.md with full context -- not lazy one-liners.
-
-**The 2-Heartbeat Rule:**
-1. **HB 1:** Task not progressing → ⚠️ WARNING stamped
-2. **HB 2:** Still nothing → 🚨 STALLED. Agent is forced to address it. Message sent to the task's channel.
-
-Like a Flash Gold message in Jeraptha military comms -- when it hits, you stop what you're doing and respond.
-
-## Regional Patrol (Heartbeat)
-
-Every 5 minutes, the heartbeat sweeps:
-1. Context window health
-2. Push state to knowledge base
-3. Read TASKS.md -- check every task
-4. Enforce SOP compliance
-5. Check for urgent items
-
-It's underfunded and runs on a sonnet-tier model. But like the Jeraptha Regional Patrol, it keeps the outer colonies from falling apart.
-
-## Prompt Injection (Awareness Layer)
-
-Not hard blocks -- but persistent awareness that fights "lost in the middle" degradation.
-
-| Hook | Frequency | What It Injects |
-|------|-----------|----------------|
-| `task-context` | Every 3 turns (STALLED: every turn) | Active tasks from TASKS.md |
-| `sentiment-tracker` | On negative sentiment | Behavioral alerts with context |
-| `law-reinforcement` | Every 5 turns | Critical behavioral rules |
-
-## What's In The Box
-
-```
-jeraptha/
-├── README.md                    # You are here
-├── install.sh                   # One-command deployment
-│
-├── workspace/                   # Agent workspace files
-│   ├── AGENTS.md                # The LAWs (universal)
-│   ├── HEARTBEAT.md             # Regional Patrol protocol
-│   ├── TASKS.md.template        # Flash Gold task tracker
-│   ├── SCORECARD.md.template    # Wagering system
-│   ├── SOUL.md.template         # Agent persona (customize)
-│   ├── USER.md.template         # Your human (customize)
-│   ├── IDENTITY.md.template     # Agent identity (customize)
-│   ├── TOOLS.md.template        # Infrastructure (customize)
-│   └── MEMORY.md.template       # Knowledge base integration
-│
-├── hooks/                       # The ECO
-│   ├── no-deaf-polls/           # 🔇 Antenna Block
-│   ├── sop-gate/                # 📖 Compliance Check
-│   ├── ob-gate/                 # 🧠 Intel First
-│   ├── no-self-surgery/         # 🔒 Carapace Lock
-│   ├── task-context/            # 📋 Flash Gold Injection
-│   ├── sentiment-tracker/       # 📊 Wagering System
-│   └── law-reinforcement/       # ⚖️ Rule Reinforcement
-│
-├── docs/                        # Field manuals
-│   ├── lessons-learned.md       # Battle damage reports
-│   ├── compaction.md            # Context management
-│   ├── model-routing.md         # Fleet composition
-│   └── agent-communication.md   # Comms protocol
-│
-├── config/                      # Configuration intel
-│   ├── defaults.md              # Recommended settings
-│   └── config-changelog.md      # Every change and why
-│
-└── evolution/                   # The wager history
-    ├── CHANGELOG.md             # Version history
-    └── decisions/               # Decision log with odds
-```
-
-## Setup Checklist
-
-1. [ ] Clone the repo
-2. [ ] Copy templates, remove `.template` suffix, fill in details
-3. [ ] Set up LiteLLM or direct API keys
-4. [ ] Configure channels (Discord/Telegram/iMessage)
-5. [ ] Run `install.sh`
-6. [ ] Restart gateway: `openclaw gateway restart`
-7. [ ] Send a test message -- verify the ECO is active
-
-## Research Basis
-
-This isn't made up. It's based on actual research into agent self-regulation:
-
-- **Reflexion** (Shinn et al., 2023) -- Verbal reinforcement learning. Text feedback works better than numeric scores for LLMs.
-- **OPTAGENT** (Bi et al., 2025) -- Verbal RL for multi-agent reasoning. Evaluating interaction quality, not just outcomes.
-- **MetaClaw** (Xia et al., 2026) -- Continual meta-learning on OpenClaw. Process reward models, failure trajectory analysis.
-- **Self-Regulation** (Min et al., 2025) -- Metacognitive agent behavior. Knowing when to ask for help.
-
-## Philosophy
-
-**Hard blocks > soft nudges.** If the agent can ignore a rule, it will.
-
-**Verbal feedback > numeric scores.** "You went silent for 12 minutes" is more useful than "-3 points."
-
-**Process rewards > outcome rewards.** Score each step, not just the result.
-
-**Track the evolution.** Every change gets a WHY. The next agent shouldn't repeat the same mistakes.
-
-**The Jeraptha bet on everything. We track everything.**
-
-## Requirements
-
-- OpenClaw 2026.4.x+
-- LiteLLM proxy or direct API keys
-- Node.js 25+
-- An unhealthy appreciation for beetle-based compliance systems
+The name is from the Expeditionary Force books: the Jeraptha run a
+compliance office and bet on every outcome.
 
 ## License
 
-MIT
-
----
-
-*Built with an unhealthy appreciation for beetle-based compliance systems. The Jeraptha would approve -- assuming we let them bet on whether it works.*
-
-*Chuta.*
+MIT. See `LICENSE`.
