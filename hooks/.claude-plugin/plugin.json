@@ -1,0 +1,5 @@
+{
+  "name": "dev-rules",
+  "version": "4.0.0",
+  "description": "An operator's rulings enforced as tested Claude Code hooks: worktrees through wt, no /tmp, cluster changes from one seat, one visible lane per Workflow, agent identity on commits, handoffs that survive compaction."
+}
