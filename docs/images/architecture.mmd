@@ -1,0 +1,15 @@
+flowchart LR
+  A["Agent tool call<br/>(Bash, Write, Workflow, Agent)"] --> R["register.ts<br/>(dev-rules plugin)"]
+  P["User prompt / compaction"] --> R
+  R --> CS["compact-save<br/>records calls, writes handoff"]
+  CS --> LW["literal-word<br/>rewrites to the literal command"]
+  LW --> G{"Gate rules<br/>worktree · identity · cluster<br/>model-gate · visible-lanes<br/>no-tmp · pr-bar · lane-budget"}
+  CFG["config.ts<br/>roots, infra seat, PR opener, RULINGS"] -.-> G
+  G -->|pass| H["Harness permission settings<br/>(final authority)"]
+  G -->|refuse| F["Deny message naming<br/>the command to run instead"]
+  G -->|rewrite| H
+  RU["rulings<br/>loads RULINGS into the system prompt"] -.-> A
+  WR["worktree-reaper<br/>removes finished worktrees at turn end"]
+  R --> RU
+  R --> WR
+  CLI["bin/rule-check.ts<br/>no-tmp for Codex and Pi hooks"] --> NT["core/no-tmp.ts"]
