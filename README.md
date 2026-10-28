@@ -112,6 +112,16 @@ echo '{"tool_name":"Bash","tool_input":{"command":"ls > /tmp/x"},"cwd":"/work/de
 The repo is MIT licensed: use it, change it and ship it, keeping the
 copyright notice.
 
+## How it was built
+
+Jeraptha started on 2026-04-07 as a plugin that kept one long-running agent
+on task, and was rewritten for Claude Code as v4 on 2026-10-13. Releases were
+gated by multi-agent review swarms (one returned 49 findings across five
+severities, all fixed before merge), and the `bench/` harness scores five
+Claude settings and one Codex setting on tasks with hidden checks. The
+account of each version, what was dropped and why, is in
+[docs/BUILD-STORY.md](docs/BUILD-STORY.md).
+
 ## Project status
 
 Active. The twelve rules have run in the author's own Claude Code sessions
